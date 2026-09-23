@@ -1,79 +1,39 @@
-# Dance Keys (Floor Piano)
+# Dance Keys
 
-A browser-based motion piano: point your webcam at the floor, step on virtual keys, and play notes. Built with [p5.js](https://p5js.org/) for camera + canvas and [Tone.js](https://tonejs.github.io/) for sound.
+A small browser floor piano. Point a camera at the floor, step into one of sixteen key zones, and play notes. Video is processed locally in the browser; there is no server upload, build step, or external JavaScript dependency.
 
-## Quick start
+## Run it
 
-1. Serve the folder over HTTP (camera access requires it — opening `index.html` directly often fails):
-
-   ```bash
-   npx serve .
-   # or: python3 -m http.server 8000
-   ```
-
-2. Open the URL in Chrome or Firefox.
-3. Click **START** (required to unlock audio).
-4. Position the camera so your feet appear in the **bottom strip** of the frame.
-5. Step on the key zones — each vertical slice plays a note (high notes on the left, low on the right).
-
-## How it works
-
-```
-Camera frame (320×240)
-┌─────────────────────────────┐
-│                             │  ← ignored
-│         live video          │
-│                             │
-├─────────────────────────────┤  ← detection zone (bottom 15% by default)
-│ K0 │ K1 │ K2 │ ... │ K15   │  ← 16 vertical key zones
-└─────────────────────────────┘
-         feet step here
+```sh
+python3 -m http.server 8000
 ```
 
-Each frame, the app compares the current camera image to the previous one. For every key zone in the bottom strip, it counts pixels whose RGB values changed enough since last frame. If that count exceeds a threshold and the key isn't on cooldown, it plays the assigned note.
+Open <http://localhost:8000> in a recent Chrome, Firefox, or Safari. Click **Start camera and sound**, allow camera access, and place your feet inside the key strip. The view is mirrored like a mirror; notes go from low on the left to high on the right. Use **Stop camera** to release the camera and audio. Camera access requires localhost or HTTPS when hosted elsewhere.
 
-See [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) for a deeper walkthrough of the code.
+For a phone, host the folder on HTTPS and open that URL on the phone. A plain LAN `http://` URL usually cannot request a camera.
 
-## Dev mode (tuning)
+## Tune it
 
-Press **D** or click **Dev Mode** in the top-right to open the tuning panel.
+Open **Settings** or press **D**. The outline shows the detection area; each key displays its moving-pixel percentage. Put the strip where your feet land. Move out of the strip and press **Calibrate idle noise** to set a starting step threshold for the current lighting. Then test a few steps and adjust the sliders if needed. Settings save automatically in this browser; **Reset defaults** restores the shipped values.
 
-| Control | What it does |
-|---------|----------------|
-| **Pixel threshold** | Sensitivity per pixel — lower catches smaller movement |
-| **Motion trigger** | How many "moving" pixels must appear in a zone to fire |
-| **Cooldown** | Milliseconds before the same key can re-trigger |
-| **Key zone height** | Height of the key strip |
-| **Key zone position** | Vertical position (0 = top, 1 = bottom) |
+See [docs/TUNING.md](docs/TUNING.md) for a practical guide and [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) for the detection and audio design.
 
-While dev mode is on:
+## Development
 
-- A **yellow box** outlines the key zone (same area as the key bars).
-- Each key shows a **live motion count** — step on a key and note the number when it reliably triggers.
-- Keys turn **orange** at ~50% of the trigger threshold (almost there).
-- **Copy settings JSON** copies your tuned values — paste them into the `settings` object at the top of `sketch.js` to lock them in.
+```sh
+npm test
+```
 
-See [docs/TUNING.md](docs/TUNING.md) for a practical tuning workflow.
+The test command uses Node's built-in test runner; no install is needed. The app itself is plain HTML, CSS, and JavaScript modules.
 
-## Project files
+| Path | Purpose |
+| --- | --- |
+| `index.html`, `styles.css` | Accessible controls and responsive layout |
+| `src/app.js` | Camera lifecycle, rendering, settings, calibration |
+| `src/detector.js` | Frame analysis and note trigger state machine |
+| `src/audio.js` | Web Audio synth |
+| `test/detector.test.js` | Detection and settings tests |
 
-| File | Purpose |
-|------|---------|
-| `index.html` | Page shell, start button, dev panel UI |
-| `sketch.js` | Camera capture, motion detection, sound, dev mode logic |
-| `docs/HOW_IT_WORKS.md` | Code architecture and data flow |
-| `docs/TUNING.md` | Step-by-step calibration guide |
+## Current limits
 
-## Customization
-
-- **Notes / scale** — edit the `notes` array in `sketch.js` (one entry per key, left to right).
-- **Key count** — change `NUM_KEYS` and match the length of `notes`.
-- **Sound** — tweak the `Tone.PolySynth` options in `setup()` (wave type, envelope).
-- **Defaults** — edit the `settings` object in `sketch.js` after tuning in dev mode.
-
-## Tips
-
-- Good lighting and contrast help motion detection a lot.
-- A plain floor works better than busy patterns.
-- If keys fire from background movement, raise **motion trigger** or **threshold**.
-- If keys don't fire when you step, lower **motion trigger** or **threshold**, or widen **detection zone height**.
+Detection uses camera motion, not foot recognition. Fast shadows, a moving camera, or another object moving in the key strip can still play notes. A foot held still eventually rearms the key; a new movement on that key can then play it again. Camera and audio behavior should be checked on the actual device and floor where it will be used.

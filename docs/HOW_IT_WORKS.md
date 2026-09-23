@@ -1,143 +1,31 @@
-# How It Works
+# How Dance Keys works
 
-This document explains the architecture of Dance Keys so you can reason about changes and debug behavior.
+## Startup and shutdown
 
-## Overview
+The **Start camera and sound** click creates and resumes an `AudioContext`, then calls `getUserMedia`. The app waits for a camera frame, copies it as the reference frame, and only then shows the playing view. No notes are generated from the initial blank frame. **Stop camera** stops every media track, detaches the video, cancels frame processing, and closes the audio context. A disconnected camera returns to the start screen with a status message.
 
-The app runs a continuous loop (`draw()` in p5.js, ~60 fps):
+All processing happens in the browser. `src/app.js` holds the browser lifecycle and drawing code. `src/detector.js` contains functions that can run without a camera or browser. `src/audio.js` creates short synthesized notes with Web Audio.
 
-1. Draw the mirrored webcam feed full-screen.
-2. Compare current pixels to the previous frame in the bottom detection zone.
-3. For each of 16 horizontal key zones, count "moving" pixels.
-4. If motion exceeds a threshold (and cooldown elapsed), play the zone's note.
-5. Save the current frame as `prevFrame` for the next comparison.
+## Video and coordinates
 
-There is no ML or pose detection — it's pure frame differencing on a fixed floor strip.
+Each new camera frame is drawn into a 320 × 240 offscreen canvas for analysis. `requestVideoFrameCallback` processes actual video frames when the browser supports it; a 50 ms timer is the fallback. The visible canvas preserves the camera aspect ratio, centers it, and mirrors it. Both the visible key strip and the detection bounds use the same `zoneHeight` and `zonePosition` settings.
 
-## Key data structures
+The sixteen analysis zones run left to right in **camera** coordinates. The mirror reverses them on screen. The note array in `src/app.js` therefore runs high to low in camera order, producing low to high notes on screen.
 
-### `settings` (tweakable at runtime)
+## Motion and note triggering
 
-All detection and overlay parameters live in one object. Dev mode sliders write to this object; `draw()` reads from it every frame.
+For sampled pixels in each key zone, frame analysis sums absolute RGB channel changes. A pixel counts as moving when that sum exceeds `pixelThreshold`. Each key receives a ratio of moving pixels to sampled pixels. Ratios make `pressThreshold` comparable across sampling steps and strip heights.
 
-```javascript
-const settings = {
-  threshold: 8,        // per-pixel RGB change gate
-  motionTrigger: 75,   // moving pixels needed to fire
-  cooldown: 250,       // ms between triggers per key
-  keyZoneHeight: 0.15,
-  keyZonePosition: 1,  // 0 = top, 1 = bottom
-  // ... overlay + performance knobs
-}
-```
+`KeyTracker` has an armed state for each key. A key plays once when its ratio crosses `pressThreshold`, the cooldown has elapsed, and fewer than half of all zones cross the threshold at once. Broad movement is suppressed because it is often camera shake or a lighting change. After a note, two processed frames below 35% of the press threshold rearm that key. The cooldown is an additional guard against quick retriggers.
 
-### `keys` (one per zone)
-
-Built once in `setup()`. Each key stores layout and state:
-
-| Field | Meaning |
-|-------|---------|
-| `note` | Tone.js note name, e.g. `"C4"` |
-| `x`, `w` | Horizontal position and width as fractions (0–1) of frame width |
-| `last` | Timestamp (`millis()`) of last trigger — used for cooldown |
-| `motion` | Latest frame's moving-pixel count (updated each draw, shown in dev mode) |
-
-### `video` and `prevFrame`
-
-- `video` — live webcam capture at 320×240 (processing resolution; displayed scaled to window).
-- `prevFrame` — copy of last frame's pixels. After each `draw()`, `prevFrame.copy(video, ...)` keeps them in sync.
-
-Motion is detected by diffing these two buffers.
-
-## Motion detection (the core loop)
-
-For each key zone, the code defines a rectangle in **camera pixel space**:
-
-```
-x1 = key.x * videoWidth
-x2 = (key.x + key.w) * videoWidth
-top = (1 - keyZoneHeight) * keyZonePosition
-y1 = videoHeight * top
-y2 = videoHeight * (top + keyZoneHeight)
-```
-
-It loops over that rectangle, stepping by `pixelStep` (default: every 2nd pixel) for speed.
-
-For each sampled pixel:
-
-```javascript
-diff = |R_now - R_prev| + |G_now - G_prev| + |B_now - B_prev|
-
-if (diff > settings.threshold) {
-  motion++
-}
-```
-
-`diff` is the sum of absolute RGB channel differences — a simple, fast motion metric. Values typically range from 0 (static) to 765 (white ↔ black flip).
-
-A key **triggers** when:
-
-```javascript
-motion > settings.motionTrigger && (now - key.last) > settings.cooldown
-```
-
-Then it calls `synth.triggerAttackRelease(key.note, settings.noteDuration)` and records `key.last = now`.
-
-## Coordinate spaces
-
-There are two coordinate systems to keep straight:
-
-| Space | Used for |
-|-------|----------|
-| **Camera pixels** (320×240) | Motion scanning — `video.pixels`, zone bounds |
-| **Canvas pixels** (window size) | Drawing overlays — key bars, labels, dev HUD |
-
-The camera feed is drawn scaled to the canvas, but motion math always uses the native 320×240 buffer so detection is consistent regardless of window size.
-
-The canvas is **mirrored** (`scale(-1, 1)`) so it feels like a mirror. Detection still uses the un-mirrored pixel buffer — zones map left-to-right in camera space, which appears reversed on screen. The `notes` array order accounts for this layout.
+This is motion detection, so a stationary foot is not tracked as an occupied key. A new movement after rearming may play the same note again. Foot segmentation or background subtraction would be a different detection model.
 
 ## Sound
 
-`Tone.PolySynth` wraps multiple `Tone.Synth` voices so overlapping notes (stepping on two keys) work. Audio only starts after the user clicks **START**, which calls `Tone.start()` — a browser requirement.
+Each note uses a sine oscillator and a short gain envelope. Oscillators disconnect after playback, so overlapping notes can sound together without holding idle voices. The audio context is created only after the Start click, which satisfies browser audio activation rules.
 
-The envelope (`attack`, `decay`, `sustain`, `release`) shapes each note. These are fixed in `setup()` today; they could be added to dev mode later if needed.
+## Settings and calibration
 
-## Dev mode additions
+`DEFAULT_SETTINGS` and valid ranges are defined in `src/detector.js`. The panel reads those values and saves changes in `localStorage` under `dance-keys-settings-v2`. Invalid or older saved values are clamped or replaced with defaults. Calibration collects the maximum key motion ratio for each frame over two seconds while the strip is empty. It uses the 90th percentile plus a margin to set `pressThreshold`; it does not change pixel sensitivity. Calibration pauses note triggering while it runs.
 
-When `devMode` is true:
-
-1. **Key zone outline** — yellow rectangle around the bottom strip (same area as key bars).
-2. **Per-key motion counts** — the exact number compared against `motionTrigger`.
-3. **Orange "warm" state** — motion > 50% of trigger (almost firing).
-4. **HUD** — current threshold, trigger, cooldown, zone height.
-5. **Side panel** — sliders bound to `settings`; copy/reset buttons.
-
-The panel does not persist settings automatically. Use **Copy settings JSON** and paste into `sketch.js` to save your calibration.
-
-## Frame lifecycle (one `draw()` call)
-
-```
-draw()
-  ├─ loadPixels() on video + prevFrame
-  ├─ for each key:
-  │    ├─ scan zone → count motion
-  │    ├─ maybe trigger note
-  │    └─ draw overlay bar + label (+ motion count if dev)
-  ├─ draw dev HUD if enabled
-  └─ prevFrame.copy(video)   ← must happen AFTER comparison
-```
-
-If `prevFrame.copy()` ran before scanning, every pixel would diff against itself and motion would always be zero.
-
-## Performance notes
-
-- Scanning every pixel in 16 zones at 60 fps is expensive. `pixelStep: 2` samples ~¼ of pixels.
-- Increasing `pixelStep` reduces work but also reduces max `motion` counts — you may need a lower `motionTrigger`.
-- Camera resolution is fixed at 320×240 to keep pixel loops predictable.
-
-## Common extension points
-
-- **Different scales** — change `notes` array.
-- **Fewer/more keys** — change `NUM_KEYS` and `notes.length`.
-- **Velocity sensitivity** — scale note volume by `motion / motionTrigger`.
-- **Pose detection** — replace frame diff with MediaPipe / TensorFlow.js foot landmarks for more robust tracking.
+Run `npm test` to check frame assignment, normalized ratios, trigger and rearm behavior, broad movement suppression, settings validation, and calibration math.
