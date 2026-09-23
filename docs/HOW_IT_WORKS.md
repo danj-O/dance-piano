@@ -26,7 +26,7 @@ The floor reference slowly follows brightness changes only in zones that look em
 
 `src/audio.js` uses several oscillator and envelope recipes for Soft keys, Bell, Pluck, Bright synth, and Organ. Notes can overlap, and oscillators disconnect after playback. A compressor protects the output from loud chords. The audio context is created after a Start or Preview click, which satisfies browser audio activation rules.
 
-The dry signal is always present. Reverb sends notes through a generated convolution impulse. Delay uses a feedback loop with a low-pass filter; the feedback gain is fixed below one to prevent runaway repeats. Reverb and delay amount control their send levels independently. Delay time is `60 / BPM` seconds for quarter notes, half that for eighth notes, or three quarters of a beat for dotted eighth notes. Tap tempo keeps recent taps and uses the median interval; pauses reset the sequence.
+The dry signal is always present. Reverb sends notes through a generated convolution impulse. Delay uses a feedback loop with a low-pass filter; the feedback gain is fixed below one to prevent runaway repeats. Reverb and delay amount control their send levels independently. The UI sliders cover 0–200%, and adjacent number fields accept higher nonnegative percentages. `normalizeMusicSettings` keeps finite nonnegative amounts without a maximum; `effectSendGain` maps those amounts to a smoothly tapering wet send with an upper bound of 2. Delay time is `60 / BPM` seconds for quarter notes, half that for eighth notes, or three quarters of a beat for dotted eighth notes. Tap tempo keeps recent taps and uses the median interval; pauses reset the sequence.
 
 ## Settings and calibration
 

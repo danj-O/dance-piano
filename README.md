@@ -22,7 +22,7 @@ Open **Settings** or press **D**. The outline shows the detection area. Move out
 
 In **Settings → Music**, choose a key, starting octave, and scale or mode. The sixteen notes update immediately, low to high across the mirrored screen. Choose one of five synthesized sounds; **Preview sound** plays a middle key even before starting the camera.
 
-In **Settings → Effects**, turn on reverb or delay and adjust each amount. Delay follows the chosen BPM and note spacing. Set BPM with the slider or tap **Tap tempo** at least twice at a steady pace. Music and effects settings save in this browser. **Reset defaults** restores C major, octave 3, Soft keys, 120 BPM, and both effects off.
+In **Settings → Effects**, turn on reverb or delay and adjust each amount. The sliders reach 200%; type a higher nonnegative percentage in the adjacent field if needed. High amounts taper smoothly in the audio engine to keep the wet signal controlled. Delay follows the chosen BPM and note spacing. Set BPM with the slider or tap **Tap tempo** at least twice at a steady pace. Music and effects settings save in this browser. **Reset defaults** restores C major, octave 3, Soft keys, 120 BPM, and both effects off.
 
 See [docs/TUNING.md](docs/TUNING.md) for a practical guide and [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) for the detection and audio design.
 

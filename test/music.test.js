@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  DEFAULT_MUSIC, addTempoTap, buildNotes, delaySeconds, normalizeMusicSettings,
+  DEFAULT_MUSIC, addTempoTap, buildNotes, delaySeconds, effectSendGain, normalizeMusicSettings,
 } from '../src/music.js'
 
 test('default key layout preserves the original low-to-high C major notes', () => {
@@ -33,14 +33,35 @@ test('tap tempo and beat divisions set predictable delay times', () => {
   assert.equal(addTempoTap(state.taps, 4000).bpm, null)
 })
 
-test('stored music settings reject invalid choices and clamp effect values', () => {
+test('stored music settings reject invalid choices without capping effect amounts', () => {
   const value = normalizeMusicSettings({ tonic: 'H', mode: 'unknown', octave: 9, sound: 'unknown', reverbMix: 5, delayMix: -2, bpm: 999, delayOn: true })
   assert.equal(value.tonic, 'C')
   assert.equal(value.mode, 'major')
   assert.equal(value.octave, 4)
   assert.equal(value.sound, 'softKeys')
-  assert.equal(value.reverbMix, 0.6)
+  assert.equal(value.reverbMix, 5)
   assert.equal(value.delayMix, 0)
   assert.equal(value.bpm, 220)
   assert.equal(value.delayOn, true)
+})
+
+test('effect send gain rises beyond 60% and tapers at high amounts', () => {
+  assert.equal(effectSendGain(0), 0)
+  assert.ok(effectSendGain(1) > effectSendGain(0.6))
+  assert.ok(effectSendGain(2) > effectSendGain(1))
+  assert.ok(effectSendGain(100) <= 2)
+})
+
+test('music setup and tap tempo work without newer Safari helpers', () => {
+  const hasOwn = Object.hasOwn
+  const arrayAt = Array.prototype.at
+  try {
+    Object.hasOwn = undefined
+    Array.prototype.at = undefined
+    assert.equal(normalizeMusicSettings({ mode: 'dorian', delayDivision: 'quarter' }).mode, 'dorian')
+    assert.equal(addTempoTap([0], 500).bpm, 120)
+  } finally {
+    Object.hasOwn = hasOwn
+    Array.prototype.at = arrayAt
+  }
 })

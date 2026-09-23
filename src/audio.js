@@ -1,4 +1,4 @@
-import { delaySeconds, effectSendGain, normalizeMusicSettings } from './music.js'
+import { delaySeconds, effectSendGain, normalizeMusicSettings } from './music.js?v=mobile-compat'
 
 const NOTE_NAMES = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }
 

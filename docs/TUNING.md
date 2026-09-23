@@ -26,4 +26,4 @@ This detector compares the view with a clear-floor image; it does not identify f
 
 Choose **Key**, **Scale or mode**, and **Starting octave** to place the sixteen notes. The screen runs low on the left to high on the right. **Sound** changes the synth recipe; press **Preview sound** to hear a middle note without starting the camera.
 
-Reverb and delay each have an on/off switch and amount slider. For tempo-synced echoes, turn on **Delay**, choose an **Echo spacing**, then set **Tempo** or tap **Tap tempo** at least twice. A new tap sequence starts after a pause. If echoes overlap too much, lower **Delay amount** or select a faster echo spacing.
+Reverb and delay each have an on/off switch and amount slider. The sliders reach 200%; enter a higher nonnegative percentage in the field beside either slider if needed. The audio send tapers as values rise. For tempo-synced echoes, turn on **Delay**, choose an **Echo spacing**, then set **Tempo** or tap **Tap tempo** at least twice. A new tap sequence starts after a pause. If echoes overlap too much, lower **Delay amount** or select a faster echo spacing.

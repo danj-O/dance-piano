@@ -32,9 +32,9 @@ export const DEFAULT_MUSIC = Object.freeze({
 export function normalizeMusicSettings(value = {}) {
   const result = { ...DEFAULT_MUSIC }
   if (TONICS.includes(value.tonic)) result.tonic = value.tonic
-  if (Object.hasOwn(MODES, value.mode)) result.mode = value.mode
+  if (Object.prototype.hasOwnProperty.call(MODES, value.mode)) result.mode = value.mode
   if (SOUND_NAMES.includes(value.sound)) result.sound = value.sound
-  if (Object.hasOwn(DELAY_DIVISIONS, value.delayDivision)) result.delayDivision = value.delayDivision
+  if (Object.prototype.hasOwnProperty.call(DELAY_DIVISIONS, value.delayDivision)) result.delayDivision = value.delayDivision
   for (const name of ['reverbOn', 'delayOn']) {
     if (typeof value[name] === 'boolean') result[name] = value[name]
   }
@@ -75,7 +75,7 @@ export function delaySeconds(settings) {
 
 // Use recent taps so the value responds to a new tempo instead of averaging an old one.
 export function addTempoTap(previousTaps, atMs) {
-  const previous = previousTaps.at(-1)
+  const previous = previousTaps[previousTaps.length - 1]
   const taps = previous == null || atMs - previous < 250 || atMs - previous > 1500
     ? [atMs]
     : [...previousTaps.slice(-3), atMs]

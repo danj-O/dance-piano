@@ -2,8 +2,8 @@ import {
   FRAME_HEIGHT, FRAME_WIDTH, KEY_COUNT, DEFAULT_SETTINGS,
   KeyTracker, adaptBackground, analyzeOccupancy, calibrationThreshold, normalizeSettings, zoneBounds,
 } from './detector.js'
-import { DanceAudio } from './audio.js'
-import { DEFAULT_MUSIC, addTempoTap, buildNotes, normalizeMusicSettings } from './music.js'
+import { DanceAudio } from './audio.js?v=mobile-compat'
+import { DEFAULT_MUSIC, addTempoTap, buildNotes, normalizeMusicSettings } from './music.js?v=mobile-compat'
 
 const STORAGE_KEY = 'dance-keys-settings-v2'
 const PERCENTAGES_KEY = 'dance-keys-show-percentages'
@@ -82,13 +82,17 @@ function syncControls() {
 }
 
 function syncMusicControls() {
-  for (const name of ['tonic', 'mode', 'octave', 'sound', 'delayDivision', 'bpm', 'reverbMix', 'delayMix']) {
+  for (const name of ['tonic', 'mode', 'octave', 'sound', 'delayDivision', 'bpm']) {
     $(name).value = musicSettings[name]
+  }
+  for (const name of ['reverbMix', 'delayMix']) {
+    const percent = Math.round(musicSettings[name] * 100)
+    $(name).value = Math.min(musicSettings[name], Number($(name).max))
+    $(`${name}-number`).value = percent
+    $(`${name}-value`).textContent = `${percent}%`
   }
   $('reverbOn').checked = musicSettings.reverbOn
   $('delayOn').checked = musicSettings.delayOn
-  $('reverbMix-value').textContent = `${Math.round(musicSettings.reverbMix * 100)}%`
-  $('delayMix-value').textContent = `${Math.round(musicSettings.delayMix * 100)}%`
   $('bpm-value').textContent = `${musicSettings.bpm} BPM`
   render()
 }
@@ -344,6 +348,16 @@ for (const name of ['tonic', 'mode', 'octave', 'sound', 'delayDivision', 'bpm', 
     const value = input.type === 'checkbox' ? input.checked : input.type === 'range' || name === 'octave' ? Number(input.value) : input.value
     if (name === 'bpm') tempoTaps = []
     updateMusic(name, value)
+  })
+}
+for (const name of ['reverbMix', 'delayMix']) {
+  $(`${name}-number`).addEventListener('change', (event) => {
+    const input = event.target
+    if (input.value !== '' && input.validity.valid && Number.isFinite(Number(input.value))) {
+      updateMusic(name, Number(input.value) / 100)
+    } else {
+      syncMusicControls()
+    }
   })
 }
 $('tap-tempo').addEventListener('click', () => {
