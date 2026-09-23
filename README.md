@@ -18,6 +18,12 @@ Open **Settings** or press **D**. The outline shows the detection area. Move out
 
 **Key strip height** can go down to 0.5% of the frame, visually almost a line. At that size the detector sees only about one or two camera rows, so use steady camera placement and consider a pixel sample step of 1 if hits are missed.
 
+## Make it yours
+
+In **Settings → Music**, choose a key, starting octave, and scale or mode. The sixteen notes update immediately, low to high across the mirrored screen. Choose one of five synthesized sounds; **Preview sound** plays a middle key even before starting the camera.
+
+In **Settings → Effects**, turn on reverb or delay and adjust each amount. Delay follows the chosen BPM and note spacing. Set BPM with the slider or tap **Tap tempo** at least twice at a steady pace. Music and effects settings save in this browser. **Reset defaults** restores C major, octave 3, Soft keys, 120 BPM, and both effects off.
+
 See [docs/TUNING.md](docs/TUNING.md) for a practical guide and [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) for the detection and audio design.
 
 ## Development
@@ -33,8 +39,9 @@ The test command uses Node's built-in test runner; no install is needed. The app
 | `index.html`, `styles.css` | Accessible controls and responsive layout |
 | `src/app.js` | Camera lifecycle, rendering, settings, calibration |
 | `src/detector.js` | Frame analysis and note trigger state machine |
-| `src/audio.js` | Web Audio synth |
-| `test/detector.test.js` | Detection and settings tests |
+| `src/music.js` | Scale mapping, music settings, delay timing, tap tempo |
+| `src/audio.js` | Web Audio synth, reverb, and delay |
+| `test/` | Detection and music tests |
 
 ## Current limits
 

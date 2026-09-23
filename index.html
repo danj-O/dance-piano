@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#10131b" />
     <title>Dance Keys</title>
-    <link rel="stylesheet" href="styles.css?v=key-feedback" />
-    <script type="module" src="src/app.js?v=thin-strip"></script>
+    <link rel="stylesheet" href="styles.css?v=effect-amounts" />
+    <script type="module" src="src/app.js?v=effect-amounts"></script>
   </head>
   <body>
     <canvas id="stage" aria-label="Mirrored camera view with sixteen playable key zones"></canvas>
@@ -37,6 +37,84 @@
         <span><strong>Show key percentages</strong><small>Keep the live occupancy numbers visible while playing.</small></span>
         <input id="show-percentages" type="checkbox" />
       </label>
+      <h3 class="section-heading">Music</h3>
+      <div class="select-grid">
+        <div class="control">
+          <label for="tonic">Key</label>
+          <select id="tonic">
+            <option>C</option><option>C#</option><option>D</option><option>D#</option>
+            <option>E</option><option>F</option><option>F#</option><option>G</option>
+            <option>G#</option><option>A</option><option>A#</option><option>B</option>
+          </select>
+        </div>
+        <div class="control">
+          <label for="octave">Starting octave</label>
+          <select id="octave"><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
+        </div>
+      </div>
+      <div class="control">
+        <label for="mode">Scale or mode</label>
+        <select id="mode">
+          <option value="major">Major</option><option value="minor">Natural minor</option>
+          <option value="dorian">Dorian</option><option value="phrygian">Phrygian</option>
+          <option value="lydian">Lydian</option><option value="mixolydian">Mixolydian</option>
+          <option value="locrian">Locrian</option>
+          <option value="majorPentatonic">Major pentatonic</option>
+          <option value="minorPentatonic">Minor pentatonic</option>
+          <option value="chromatic">Chromatic</option>
+        </select>
+        <small>Sixteen zones follow this scale from low on the left to high on the right.</small>
+      </div>
+      <div class="control">
+        <label for="sound">Sound</label>
+        <select id="sound">
+          <option value="softKeys">Soft keys</option><option value="bell">Bell</option>
+          <option value="pluck">Pluck</option><option value="brightSynth">Bright synth</option>
+          <option value="organ">Organ</option>
+        </select>
+      </div>
+      <button id="preview-sound" type="button">Preview sound</button>
+
+      <h3 class="section-heading">Effects</h3>
+      <label class="display-toggle" for="reverbOn">
+        <span><strong>Reverb</strong><small>Add space around each note.</small></span>
+        <input id="reverbOn" type="checkbox" />
+      </label>
+      <div class="control">
+        <label for="reverbMix">Reverb amount <output id="reverbMix-value"></output></label>
+        <div class="effect-amount">
+          <input id="reverbMix" type="range" min="0" max="2" step="0.01" />
+          <input id="reverbMix-number" type="number" min="0" step="1" aria-label="Reverb amount in percent" />
+          <span aria-hidden="true">%</span>
+        </div>
+      </div>
+      <label class="display-toggle" for="delayOn">
+        <span><strong>Delay</strong><small>Echo in time with the selected tempo.</small></span>
+        <input id="delayOn" type="checkbox" />
+      </label>
+      <div class="control">
+        <label for="delayMix">Delay amount <output id="delayMix-value"></output></label>
+        <div class="effect-amount">
+          <input id="delayMix" type="range" min="0" max="2" step="0.01" />
+          <input id="delayMix-number" type="number" min="0" step="1" aria-label="Delay amount in percent" />
+          <span aria-hidden="true">%</span>
+        </div>
+      </div>
+      <div class="control">
+        <label for="delayDivision">Echo spacing</label>
+        <select id="delayDivision">
+          <option value="quarter">Quarter note</option>
+          <option value="eighth">Eighth note</option>
+          <option value="dottedEighth">Dotted eighth</option>
+        </select>
+      </div>
+      <div class="control">
+        <label for="bpm">Tempo <output id="bpm-value"></output></label>
+        <input id="bpm" type="range" min="40" max="220" step="1" />
+        <div class="tempo-actions"><button id="tap-tempo" type="button">Tap tempo</button><span id="tap-hint">Tap at least twice to set BPM.</span></div>
+      </div>
+
+      <h3 class="section-heading">Detection</h3>
       <div class="control">
         <label for="pixelThreshold">Pixel sensitivity <output id="pixelThreshold-value"></output></label>
         <input id="pixelThreshold" type="range" min="10" max="150" step="5" />

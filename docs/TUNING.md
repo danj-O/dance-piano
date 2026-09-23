@@ -21,3 +21,9 @@
 Green fill means a note just played. Yellow fill means the key remains occupied after that flash. Orange appears during calibration when a key reaches half the step threshold. White is idle. Numeric percentages appear during calibration or while **Show key percentages** is on. **Reset defaults** restores the initial settings, including the display switch, and **Stop camera** releases the device.
 
 This detector compares the view with a clear-floor image; it does not identify feet. Shadows, pets, or other objects in the strip can trigger notes. Calibrate again when lighting or camera placement changes.
+
+## Music and effects
+
+Choose **Key**, **Scale or mode**, and **Starting octave** to place the sixteen notes. The screen runs low on the left to high on the right. **Sound** changes the synth recipe; press **Preview sound** to hear a middle note without starting the camera.
+
+Reverb and delay each have an on/off switch and amount slider. For tempo-synced echoes, turn on **Delay**, choose an **Echo spacing**, then set **Tempo** or tap **Tap tempo** at least twice. A new tap sequence starts after a pause. If echoes overlap too much, lower **Delay amount** or select a faster echo spacing.

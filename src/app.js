@@ -2,12 +2,12 @@ import {
   FRAME_HEIGHT, FRAME_WIDTH, KEY_COUNT, DEFAULT_SETTINGS,
   KeyTracker, adaptBackground, analyzeOccupancy, calibrationThreshold, normalizeSettings, zoneBounds,
 } from './detector.js'
-import { PianoAudio } from './audio.js'
+import { DanceAudio } from './audio.js'
+import { DEFAULT_MUSIC, addTempoTap, buildNotes, normalizeMusicSettings } from './music.js'
 
-// Camera order is reversed by the mirror: low notes appear on screen left.
-const NOTES = ['D5', 'C5', 'B4', 'A4', 'G4', 'F4', 'E4', 'D4', 'C4', 'B3', 'A3', 'G3', 'F3', 'E3', 'D3', 'C3']
 const STORAGE_KEY = 'dance-keys-settings-v2'
 const PERCENTAGES_KEY = 'dance-keys-show-percentages'
+const MUSIC_KEY = 'dance-keys-music-v1'
 const $ = (id) => document.getElementById(id)
 const stage = $('stage')
 const context = stage.getContext('2d')
@@ -18,7 +18,12 @@ const frameContext = frameCanvas.getContext('2d', { willReadFrequently: true })
 
 let settings = loadSettings()
 let showPercentages = loadShowPercentages()
+let musicSettings = loadMusicSettings()
+// Camera order is reversed by the mirror: low notes appear on screen left.
+let notes = buildNotes(musicSettings, KEY_COUNT).reverse()
+let tempoTaps = []
 let audio = null
+let audioStartPromise = null
 let stream = null
 let video = null
 let background = null
@@ -39,6 +44,16 @@ function loadSettings() {
 function loadShowPercentages() {
   try { return localStorage.getItem(PERCENTAGES_KEY) === 'true' }
   catch { return false }
+}
+
+function loadMusicSettings() {
+  try { return normalizeMusicSettings(JSON.parse(localStorage.getItem(MUSIC_KEY)) ?? {}) }
+  catch { return normalizeMusicSettings() }
+}
+
+function saveMusicSettings() {
+  try { localStorage.setItem(MUSIC_KEY, JSON.stringify(musicSettings)) }
+  catch { $('settings-status').textContent = 'Music settings could not be saved in this browser.' }
 }
 
 function saveShowPercentages() {
@@ -64,6 +79,26 @@ function syncControls() {
     $(`${name}-value`).textContent = formatSetting(name, value)
   }
   render()
+}
+
+function syncMusicControls() {
+  for (const name of ['tonic', 'mode', 'octave', 'sound', 'delayDivision', 'bpm', 'reverbMix', 'delayMix']) {
+    $(name).value = musicSettings[name]
+  }
+  $('reverbOn').checked = musicSettings.reverbOn
+  $('delayOn').checked = musicSettings.delayOn
+  $('reverbMix-value').textContent = `${Math.round(musicSettings.reverbMix * 100)}%`
+  $('delayMix-value').textContent = `${Math.round(musicSettings.delayMix * 100)}%`
+  $('bpm-value').textContent = `${musicSettings.bpm} BPM`
+  render()
+}
+
+function updateMusic(name, value) {
+  musicSettings = normalizeMusicSettings({ ...musicSettings, [name]: value })
+  notes = buildNotes(musicSettings, KEY_COUNT).reverse()
+  saveMusicSettings()
+  audio?.setSettings(musicSettings)
+  syncMusicControls()
 }
 
 function setPanel(open) {
@@ -135,7 +170,7 @@ function render() {
     context.textBaseline = 'middle'
     context.font = `600 ${Math.max(10, Math.min(16, keyWidth * 0.32))}px system-ui`
     const labelY = compactZone ? (labelsBelow ? y + h + 13 : y - 13) : y + h * (showReadings ? 0.4 : 0.5)
-    context.fillText(NOTES[cameraKey], x + keyWidth / 2, labelY)
+    context.fillText(notes[cameraKey], x + keyWidth / 2, labelY)
     if (showReadings) {
       context.font = `${Math.max(10, Math.min(13, keyWidth * 0.27))}px system-ui`
       const percentageY = compactZone ? (labelsBelow ? y + h + 29 : y - 29) : y + h * 0.68
@@ -163,7 +198,7 @@ function processFrame(id) {
       } else {
         const now = performance.now()
         for (const key of tracker.update(ratios, now, settings)) {
-          audio.play(NOTES[key])
+          audio.play(notes[key])
           flashes[key] = now
         }
         adaptBackground(background, current, FRAME_WIDTH, FRAME_HEIGHT, ratios, settings)
@@ -227,14 +262,27 @@ function cameraError(error) {
   return `Could not start: ${error?.message || 'unknown camera or audio error'}`
 }
 
+async function ensureAudio() {
+  if (audioStartPromise) return audioStartPromise
+  if (audio?.context?.state === 'running') return
+  if (audio?.context?.state === 'suspended') {
+    await audio.context.resume()
+    return
+  }
+  if (!audioStartPromise) {
+    audio = new DanceAudio()
+    audioStartPromise = audio.start(musicSettings).finally(() => { audioStartPromise = null })
+  }
+  await audioStartPromise
+}
+
 async function start() {
   const button = $('start')
   button.disabled = true
   $('status').textContent = 'Starting sound and waiting for camera permission…'
   const id = ++runId
   try {
-    audio = new PianoAudio()
-    await audio.start()
+    await ensureAudio()
     stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { width: FRAME_WIDTH, height: FRAME_HEIGHT, facingMode: 'environment' } })
     if (id !== runId) { stream.getTracks().forEach((track) => track.stop()); return }
     video = document.createElement('video')
@@ -290,6 +338,37 @@ for (const name of Object.keys(DEFAULT_SETTINGS)) {
     if (name === 'zoneHeight' || name === 'zonePosition' || name === 'pixelStep') tracker = new KeyTracker()
   })
 }
+for (const name of ['tonic', 'mode', 'octave', 'sound', 'delayDivision', 'bpm', 'reverbMix', 'delayMix', 'reverbOn', 'delayOn']) {
+  const input = $(name)
+  input.addEventListener(input.type === 'range' ? 'input' : 'change', () => {
+    const value = input.type === 'checkbox' ? input.checked : input.type === 'range' || name === 'octave' ? Number(input.value) : input.value
+    if (name === 'bpm') tempoTaps = []
+    updateMusic(name, value)
+  })
+}
+$('tap-tempo').addEventListener('click', () => {
+  const result = addTempoTap(tempoTaps, performance.now())
+  tempoTaps = result.taps
+  if (result.bpm == null) {
+    $('tap-hint').textContent = 'Tap again in time.'
+  } else {
+    updateMusic('bpm', result.bpm)
+    $('tap-hint').textContent = `${result.bpm} BPM from your taps.`
+  }
+})
+$('preview-sound').addEventListener('click', async () => {
+  const button = $('preview-sound')
+  button.disabled = true
+  try {
+    await ensureAudio()
+    audio.play(notes[Math.floor(KEY_COUNT / 2)])
+    $('settings-status').textContent = 'Previewing the selected sound.'
+  } catch (error) {
+    $('settings-status').textContent = `Sound preview failed: ${error.message}`
+  } finally {
+    button.disabled = false
+  }
+})
 $('start').addEventListener('click', start)
 $('stop').addEventListener('click', () => stop())
 $('settings-toggle').addEventListener('click', () => setPanel($('settings-panel').hidden))
@@ -302,11 +381,18 @@ $('show-percentages').addEventListener('change', (event) => {
 })
 $('reset').addEventListener('click', () => {
   settings = normalizeSettings()
+  musicSettings = normalizeMusicSettings(DEFAULT_MUSIC)
+  notes = buildNotes(musicSettings, KEY_COUNT).reverse()
+  tempoTaps = []
   showPercentages = false
   $('show-percentages').checked = false
   saveSettings()
+  saveMusicSettings()
   saveShowPercentages()
   syncControls()
+  syncMusicControls()
+  audio?.setSettings(musicSettings)
+  $('tap-hint').textContent = 'Tap at least twice to set BPM.'
   tracker = new KeyTracker()
   $('settings-status').textContent = 'Default settings restored.'
 })
@@ -336,4 +422,5 @@ document.addEventListener('keydown', (event) => {
 })
 window.addEventListener('resize', resize)
 syncControls()
+syncMusicControls()
 resize()

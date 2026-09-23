@@ -2,7 +2,7 @@
 
 ## Startup and shutdown
 
-The **Start camera and sound** click creates and resumes an `AudioContext`, then calls `getUserMedia`. The app waits one second for the camera to settle, captures an empty-floor reference frame, and only then shows the playing view. Keep the strip clear during that capture. No notes are generated from the reference frame. **Stop camera** stops every media track, detaches the video, cancels frame processing, and closes the audio context. A disconnected camera returns to the start screen with a status message.
+The **Start camera and sound** click creates or resumes an `AudioContext`, then calls `getUserMedia`. **Preview sound** can create the same audio context before camera access. The app waits one second for the camera to settle, captures an empty-floor reference frame, and only then shows the playing view. Keep the strip clear during that capture. No notes are generated from the reference frame. **Stop camera** stops every media track, detaches the video, cancels frame processing, and closes the audio context. A disconnected camera returns to the start screen with a status message.
 
 All processing happens in the browser. `src/app.js` holds the browser lifecycle and drawing code. `src/detector.js` contains functions that can run without a camera or browser. `src/audio.js` creates short synthesized notes with Web Audio.
 
@@ -12,7 +12,7 @@ Each new camera frame is drawn into a 320 × 240 offscreen canvas for analysis. 
 
 The strip can be as thin as 0.5% of the frame. Detection bounds always include at least one camera row; at this minimum, only about one or two rows are usually sampled. The overlay moves labels outside strips too thin to contain them. Very thin strips trade foot coverage for precise placement.
 
-The sixteen analysis zones run left to right in **camera** coordinates. The mirror reverses them on screen. The note array in `src/app.js` therefore runs high to low in camera order, producing low to high notes on screen.
+The sixteen analysis zones run left to right in **camera** coordinates. The mirror reverses them on screen. `src/music.js` builds the selected scale from low to high, and `src/app.js` reverses that sequence for camera order. Changing the key, mode, or octave updates labels and future notes immediately.
 
 ## Occupancy and note triggering
 
@@ -24,10 +24,14 @@ The floor reference slowly follows brightness changes only in zones that look em
 
 ## Sound
 
-Each note uses a sine oscillator and a short gain envelope. Oscillators disconnect after playback, so overlapping notes can sound together without holding idle voices. The audio context is created only after the Start click, which satisfies browser audio activation rules.
+`src/audio.js` uses several oscillator and envelope recipes for Soft keys, Bell, Pluck, Bright synth, and Organ. Notes can overlap, and oscillators disconnect after playback. A compressor protects the output from loud chords. The audio context is created after a Start or Preview click, which satisfies browser audio activation rules.
+
+The dry signal is always present. Reverb sends notes through a generated convolution impulse. Delay uses a feedback loop with a low-pass filter; the feedback gain is fixed below one to prevent runaway repeats. Reverb and delay amount control their send levels independently. Delay time is `60 / BPM` seconds for quarter notes, half that for eighth notes, or three quarters of a beat for dotted eighth notes. Tap tempo keeps recent taps and uses the median interval; pauses reset the sequence.
 
 ## Settings and calibration
 
 `DEFAULT_SETTINGS` and valid ranges are defined in `src/detector.js`. The panel reads those values and saves changes in `localStorage` under `dance-keys-settings-v2`. Invalid or older saved values are clamped or replaced with defaults. Calibration first captures a fresh empty-floor frame, then collects the maximum key occupancy ratio for each frame over two seconds. A timer ends calibration independently of whether Settings is open or frames continue arriving. The progress bar is visible only during calibration. Per-key percentages appear during calibration or whenever **Show key percentages** is enabled; that preference also saves locally. Green fill takes priority for a brief note-trigger flash, then yellow fill shows that the key remains occupied. The 90th percentile plus a margin sets `pressThreshold`; calibration does not change pixel sensitivity or trigger notes while it runs.
 
-Run `npm test` to check frame assignment, normalized ratios, entry/hold/exit behavior, background adaptation, broad-change suppression, settings validation, and calibration math.
+`src/music.js` defines defaults and validates saved musical choices under `dance-keys-music-v1`. The default C major mapping matches the original sixteen notes. Changes to sound and effects update the running audio graph; changes to key or mode rebuild the note labels. Reset defaults restores both detection and music settings.
+
+Run `npm test` to check frame assignment, normalized ratios, entry/hold/exit behavior, background adaptation, scale mapping, tap tempo, delay timing, and settings validation.
