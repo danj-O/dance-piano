@@ -1,20 +1,23 @@
 # Tuning Dance Keys
 
-1. Aim the camera down at a floor with steady lighting. Keep the camera still.
+1. Aim the camera down at a floor with steady lighting. Keep the camera still and the key strip empty during the one-second startup reference capture.
 2. Start the app and open **Settings**. Adjust **Key strip height** and **Key strip position** until the outlined area covers where your feet land.
-3. Move completely out of that area, then click **Calibrate idle noise**. Stay clear for two seconds.
-4. Step into one key at a time. The live percentage on that key should rise above **Step sensitivity**, and one note should play.
+   The height can be as low as 0.5%, nearly a line. Note labels move outside the strip when it is thin.
+3. Move completely out of that area, then click the large **Calibrate empty floor** button at the top of Settings. It captures a new floor reference, then measures for two seconds. Stay clear until the progress bar disappears and the status says calibration is complete.
+4. Step into one key at a time. One note should play on entry. Holding still should keep the key yellow; stepping out should clear it silently. Turn on **Show key percentages** if you want live occupancy numbers while testing. The switch is saved in this browser.
 5. Close Settings to play. Changes are saved automatically in the browser.
 
 | Symptom | Try |
 | --- | --- |
 | Notes play while no one is stepping | Raise **Pixel sensitivity** or **Step sensitivity**; reduce shadows or camera shake. |
 | A light step is missed | Lower **Step sensitivity**, then **Pixel sensitivity** if necessary. |
+| Very thin strip misses steps | Increase its height slightly, or set **Pixel sample step** to 1. The 0.5% strip samples only about one or two camera rows. |
 | A step plays a neighboring key too | Move the camera closer or reduce strip height so the foot occupies fewer zones. |
-| One long movement plays the same note twice | Raise **Cooldown**. The key also rearms after two quiet video frames. |
-| App feels slow | Raise **Pixel sample step**. Motion is measured as a percentage, so the step threshold should remain broadly comparable. |
+| The key stays active after the foot leaves | Clear the strip and recalibrate. Check for a strong moving shadow or a shifted camera. |
+| A foot is held still but the key retriggers | Clear the strip and recalibrate; the occupied area should stay above the release threshold until the foot leaves. |
+| App feels slow | Raise **Pixel sample step**. Occupancy is measured as a percentage, so the step threshold should remain broadly comparable. |
 | No camera picture | Check camera permission and that the page is on localhost or HTTPS; close other apps using the camera. |
 
-The green flash means a note played. Orange means motion has reached half the step threshold. White is idle. The numeric percentage is shown while Settings is open. **Reset defaults** restores the initial settings, and **Stop camera** releases the device.
+Green fill means a note just played. Yellow fill means the key remains occupied after that flash. Orange appears during calibration when a key reaches half the step threshold. White is idle. Numeric percentages appear during calibration or while **Show key percentages** is on. **Reset defaults** restores the initial settings, including the display switch, and **Stop camera** releases the device.
 
-This detector observes changed pixels, not feet. Moving shadows, pets, or other motion in the strip can trigger notes. Calibrate again when lighting or camera placement changes.
+This detector compares the view with a clear-floor image; it does not identify feet. Shadows, pets, or other objects in the strip can trigger notes. Calibrate again when lighting or camera placement changes.

@@ -6,16 +6,16 @@ export const DEFAULT_SETTINGS = Object.freeze({
   pixelThreshold: 50,
   pressThreshold: 0.16,
   cooldownMs: 300,
-  zoneHeight: 0.18,
+  zoneHeight: 0.005,
   zonePosition: 0.94,
   pixelStep: 2,
 })
 
 const LIMITS = {
   pixelThreshold: [10, 150],
-  pressThreshold: [0.04, 0.60],
+  pressThreshold: [0.04, 0.6],
   cooldownMs: [100, 800],
-  zoneHeight: [0.08, 0.45],
+  zoneHeight: [0.005, 0.45],
   zonePosition: [0, 1],
   pixelStep: [1, 5],
 }
@@ -34,18 +34,20 @@ export function normalizeSettings(value = {}) {
 
 export function zoneBounds(settings, height) {
   const top = (1 - settings.zoneHeight) * settings.zonePosition
+  const y1 = Math.floor(top * height)
   return {
     top,
     height: settings.zoneHeight,
-    y1: Math.floor(top * height),
-    y2: Math.floor((top + settings.zoneHeight) * height),
+    y1,
+    y2: Math.min(height, Math.max(y1 + 1, Math.floor((top + settings.zoneHeight) * height))),
   }
 }
 
+// Compare with the empty floor, so a stationary foot remains occupied.
 // Ratios stay comparable when sampling density or key strip height changes.
-export function analyzeMotion(current, previous, width, height, settings) {
-  if (current.length !== width * height * 4 || previous.length !== current.length) {
-    throw new RangeError('Camera frames have different dimensions')
+export function analyzeOccupancy(current, background, width, height, settings) {
+  if (current.length !== width * height * 4 || background.length !== current.length) {
+    throw new RangeError("Camera frames have different dimensions")
   }
   const { y1, y2 } = zoneBounds(settings, height)
   const ratios = new Array(KEY_COUNT).fill(0)
@@ -57,9 +59,10 @@ export function analyzeMotion(current, previous, width, height, settings) {
     for (let y = y1; y < y2; y += settings.pixelStep) {
       for (let x = x1; x < x2; x += settings.pixelStep) {
         const p = (y * width + x) * 4
-        const delta = Math.abs(current[p] - previous[p]) +
-          Math.abs(current[p + 1] - previous[p + 1]) +
-          Math.abs(current[p + 2] - previous[p + 2])
+        const delta =
+          Math.abs(current[p] - background[p]) +
+          Math.abs(current[p + 1] - background[p + 1]) +
+          Math.abs(current[p + 2] - background[p + 2])
         if (delta > settings.pixelThreshold) changed++
         sampled++
       }
@@ -69,26 +72,51 @@ export function analyzeMotion(current, previous, width, height, settings) {
   return ratios
 }
 
+// Follow slow lighting changes only where the key looks empty. Never absorb a
+// held foot into the floor reference.
+export function adaptBackground(background, current, width, height, ratios, settings, alpha = 0.02) {
+  if (current.length !== width * height * 4 || background.length !== current.length || ratios.length !== KEY_COUNT) {
+    throw new RangeError("Background, frame, or key count does not match")
+  }
+  const { y1, y2 } = zoneBounds(settings, height)
+  const emptyThreshold = settings.pressThreshold * 0.35
+  for (let key = 0; key < KEY_COUNT; key++) {
+    if (ratios[key] >= emptyThreshold) continue
+    const x1 = Math.floor((key * width) / KEY_COUNT)
+    const x2 = Math.floor(((key + 1) * width) / KEY_COUNT)
+    for (let y = y1; y < y2; y++) {
+      for (let x = x1; x < x2; x++) {
+        const p = (y * width + x) * 4
+        for (let channel = 0; channel < 3; channel++) {
+          background[p + channel] += (current[p + channel] - background[p + channel]) * alpha
+        }
+      }
+    }
+  }
+}
+
 export class KeyTracker {
   constructor() {
     this.keys = Array.from({ length: KEY_COUNT }, () => ({ armed: true, quietFrames: 0, lastNote: -Infinity }))
   }
 
   update(ratios, now, settings) {
-    if (ratios.length !== KEY_COUNT) throw new RangeError('Expected sixteen key ratios')
+    if (ratios.length !== KEY_COUNT) throw new RangeError("Expected sixteen key ratios")
     // A change across half the floor strip is usually camera motion or lighting.
-    const broadMotion = ratios.filter((ratio) => ratio >= settings.pressThreshold).length >= KEY_COUNT / 2
+    const broadChange = ratios.filter((ratio) => ratio >= settings.pressThreshold).length >= KEY_COUNT / 2
     const triggered = []
     const releaseThreshold = settings.pressThreshold * 0.35
     for (let i = 0; i < KEY_COUNT; i++) {
       const key = this.keys[i]
       const ratio = ratios[i]
       if (key.armed) {
-        if (!broadMotion && ratio >= settings.pressThreshold && now - key.lastNote >= settings.cooldownMs) {
+        if (ratio >= settings.pressThreshold) {
           key.armed = false
           key.quietFrames = 0
-          key.lastNote = now
-          triggered.push(i)
+          if (!broadChange && now - key.lastNote >= settings.cooldownMs) {
+            key.lastNote = now
+            triggered.push(i)
+          }
         }
       } else {
         key.quietFrames = ratio < releaseThreshold ? key.quietFrames + 1 : 0

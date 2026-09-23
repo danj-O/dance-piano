@@ -8,13 +8,15 @@ A small browser floor piano. Point a camera at the floor, step into one of sixte
 python3 -m http.server 8000
 ```
 
-Open <http://localhost:8000> in a recent Chrome, Firefox, or Safari. Click **Start camera and sound**, allow camera access, and place your feet inside the key strip. The view is mirrored like a mirror; notes go from low on the left to high on the right. Use **Stop camera** to release the camera and audio. Camera access requires localhost or HTTPS when hosted elsewhere.
+Open <http://localhost:8000> in a recent Chrome, Firefox, or Safari. Aim the camera at a clear floor and keep the key strip empty while clicking **Start camera and sound**. After a one-second reference capture, step into the strip. The view is mirrored like a mirror; notes go from low on the left to high on the right. Use **Stop camera** to release the camera and audio. Camera access requires localhost or HTTPS when hosted elsewhere.
 
 For a phone, host the folder on HTTPS and open that URL on the phone. A plain LAN `http://` URL usually cannot request a camera.
 
 ## Tune it
 
-Open **Settings** or press **D**. The outline shows the detection area; each key displays its moving-pixel percentage. Put the strip where your feet land. Move out of the strip and press **Calibrate idle noise** to set a starting step threshold for the current lighting. Then test a few steps and adjust the sliders if needed. Settings save automatically in this browser; **Reset defaults** restores the shipped values.
+Open **Settings** or press **D**. The outline shows the detection area. Move out of the strip and press the large **Calibrate empty floor** button at the top of Settings. A progress bar and per-key percentages appear during the short capture. Percentages disappear when it finishes unless **Show key percentages** is on. A key turns green briefly when it plays, then yellow while it remains occupied. Calibration captures a fresh floor reference and sets a starting step threshold for the current lighting. Then test a few steps and adjust the sliders if needed. Settings and the display switch save automatically in this browser; **Reset defaults** restores the shipped values.
+
+**Key strip height** can go down to 0.5% of the frame, visually almost a line. At that size the detector sees only about one or two camera rows, so use steady camera placement and consider a pixel sample step of 1 if hits are missed.
 
 See [docs/TUNING.md](docs/TUNING.md) for a practical guide and [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) for the detection and audio design.
 
@@ -36,4 +38,4 @@ The test command uses Node's built-in test runner; no install is needed. The app
 
 ## Current limits
 
-Detection uses camera motion, not foot recognition. Fast shadows, a moving camera, or another object moving in the key strip can still play notes. A foot held still eventually rearms the key; a new movement on that key can then play it again. Camera and audio behavior should be checked on the actual device and floor where it will be used.
+Detection measures what differs from a clear-floor image; it does not recognize feet. Shadows, a moving camera, or another object in the key strip can still play notes. If the camera moves or the lighting changes substantially, clear the strip and recalibrate. Camera and audio behavior should be checked on the actual device and floor where it will be used.

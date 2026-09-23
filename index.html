@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#10131b" />
     <title>Dance Keys</title>
-    <link rel="stylesheet" href="styles.css" />
-    <script type="module" src="src/app.js"></script>
+    <link rel="stylesheet" href="styles.css?v=key-feedback" />
+    <script type="module" src="src/app.js?v=thin-strip"></script>
   </head>
   <body>
     <canvas id="stage" aria-label="Mirrored camera view with sixteen playable key zones"></canvas>
@@ -19,7 +19,7 @@
     </header>
     <main id="welcome" class="welcome">
       <h1>Play the floor.</h1>
-      <p>Point your camera at the floor, then step into the colored key strip. Your video stays in this browser.</p>
+      <p>Point your camera at the floor and leave the key strip empty while starting. Then step into the colored keys. Your video stays in this browser.</p>
       <button id="start" class="primary" type="button">Start camera and sound</button>
       <p id="status" class="status" role="status" aria-live="polite">Ready when you are.</p>
     </main>
@@ -28,6 +28,15 @@
         <div><h2 id="settings-heading">Settings</h2><p>Adjust for your room. Changes save in this browser.</p></div>
         <button id="settings-close" type="button" aria-label="Close settings">×</button>
       </div>
+      <div class="calibration-card">
+        <button id="calibrate" type="button">Calibrate empty floor</button>
+        <progress id="calibration-progress" max="2500" value="0" aria-label="Calibration progress" hidden></progress>
+        <p id="settings-status" class="status" role="status" aria-live="polite">Move out of the key strip before calibrating.</p>
+      </div>
+      <label class="display-toggle" for="show-percentages">
+        <span><strong>Show key percentages</strong><small>Keep the live occupancy numbers visible while playing.</small></span>
+        <input id="show-percentages" type="checkbox" />
+      </label>
       <div class="control">
         <label for="pixelThreshold">Pixel sensitivity <output id="pixelThreshold-value"></output></label>
         <input id="pixelThreshold" type="range" min="10" max="150" step="5" />
@@ -36,7 +45,7 @@
       <div class="control">
         <label for="pressThreshold">Step sensitivity <output id="pressThreshold-value"></output></label>
         <input id="pressThreshold" type="range" min="0.04" max="0.60" step="0.01" />
-        <small>Fraction of sampled pixels that must move. Lower catches lighter steps.</small>
+        <small>Fraction of sampled pixels that must differ from the empty floor. Lower catches lighter steps.</small>
       </div>
       <div class="control">
         <label for="cooldownMs">Cooldown <output id="cooldownMs-value"></output></label>
@@ -45,7 +54,8 @@
       </div>
       <div class="control">
         <label for="zoneHeight">Key strip height <output id="zoneHeight-value"></output></label>
-        <input id="zoneHeight" type="range" min="0.08" max="0.45" step="0.01" />
+        <input id="zoneHeight" type="range" min="0.005" max="0.45" step="0.005" />
+        <small>As thin as 0.5% of the frame. Very thin strips need steadier placement.</small>
       </div>
       <div class="control">
         <label for="zonePosition">Key strip position <output id="zonePosition-value"></output></label>
@@ -55,14 +65,12 @@
       <div class="control">
         <label for="pixelStep">Pixel sample step <output id="pixelStep-value"></output></label>
         <input id="pixelStep" type="range" min="1" max="5" step="1" />
-        <small>Higher uses less CPU. Sensitivity stays proportional to the sampled area.</small>
+        <small>Higher uses less CPU. The occupied percentage stays proportional to the sampled area.</small>
       </div>
       <div class="settings-actions">
-        <button id="calibrate" type="button">Calibrate idle noise</button>
         <button id="reset" type="button">Reset defaults</button>
       </div>
-      <p id="settings-status" class="status" role="status" aria-live="polite">Move out of the key strip before calibrating.</p>
-      <p class="settings-tip">The numbers on each key show the percentage of moving pixels. Press <kbd>D</kbd> to toggle this panel.</p>
+      <p class="settings-tip">Green means a note just played; yellow means the key remains occupied. During calibration, percentages appear automatically; afterward this switch controls them. Press <kbd>D</kbd> to toggle this panel.</p>
     </aside>
   </body>
 </html>
