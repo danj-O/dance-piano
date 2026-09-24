@@ -8,6 +8,12 @@ It describes the target direction. The current implementation may not yet match 
 
 ---
 
+## Current Implementation (Phase 2D review)
+
+`DetectionRuntime` coordinates the existing tracker, local adaptation, and global idle calibration for each camera reference. `src/detection-policy.js` centralizes their configuration without changing saved settings. The app continues to own camera lifecycle, action dispatch, and UI. The opt-in debug panel reports safe low-zone counts and blocked/rearm reasons. See [PHASE_2D_RESULTS.md](PHASE_2D_RESULTS.md) and [DETECTION_ACCEPTANCE.md](DETECTION_ACCEPTANCE.md). Earlier numbered implementation sections are historical snapshots.
+
+---
+
 ## Current Implementation (Phase 2C global idle calibration)
 
 `src/global-idle-calibration.js` adds a whole-scene policy above the existing local controller. It observes zone measurements and tracker telemetry, waits for broad stable low activity with no occupancy or recent interaction, then approves a short coordinated blend through the same shared-baseline primitive. `src/app.js` arbitrates baseline writes and resets temporal state at handoff. This global runtime state is not persisted and does not change the layout, trigger events, or action path. See [PHASE_2C_RESULTS.md](PHASE_2C_RESULTS.md).

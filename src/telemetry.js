@@ -1,8 +1,10 @@
+import { TELEMETRY_POLICY } from './detection-policy.js'
+
 // Ten seconds of roughly 10 Hz observations exposes sustained drift and
 // quantized flicker without retaining every processed camera frame.
-export const HISTORY_WINDOW_MS = 10_000
-export const HISTORY_INTERVAL_MS = 100
-export const HISTORY_LIMIT = 120
+export const HISTORY_WINDOW_MS = TELEMETRY_POLICY.historyWindowMs
+export const HISTORY_INTERVAL_MS = TELEMETRY_POLICY.historyIntervalMs
+export const HISTORY_LIMIT = TELEMETRY_POLICY.historyLimit
 
 export class ZoneTelemetry {
   constructor() {

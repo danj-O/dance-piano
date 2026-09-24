@@ -140,11 +140,13 @@ See [PHASE_2C_RESULTS.md](PHASE_2C_RESULTS.md) for the implementation, safeguard
 
 ---
 
-# Phase 2D — Real-World Detection Tuning
+# Phase 2D — Real-World Detection Tuning (implementation complete; physical acceptance pending)
 
 ## Goal
 
 Use camera experiments to tune sampling, thresholds, timing, drift guards, and debug feedback without expanding the instrument model.
+
+The combined detector review, policy inventory, telemetry cleanup, and automated regression tests are in [PHASE_2D_RESULTS.md](PHASE_2D_RESULTS.md). A human should run [DETECTION_ACCEPTANCE.md](DETECTION_ACCEPTANCE.md) before declaring the subsystem physically accepted.
 
 ---
 

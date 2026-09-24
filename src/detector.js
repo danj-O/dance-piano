@@ -1,31 +1,11 @@
 import { ZoneTelemetry } from './telemetry.js?v=local-adaptation'
+import { FRAME_WIDTH, FRAME_HEIGHT, DEFAULT_SETTINGS, SETTINGS_LIMITS, TRIGGER_POLICY } from './detection-policy.js'
 
-export const FRAME_WIDTH = 320
-export const FRAME_HEIGHT = 240
-
-export const DEFAULT_SETTINGS = Object.freeze({
-  pixelThreshold: 50,
-  pressThreshold: 0.30,
-  adaptationCeiling: 0.12,
-  cooldownMs: 300,
-  zoneHeight: 0.005,
-  zonePosition: 0.94,
-  pixelStep: 2,
-})
-
-const LIMITS = {
-  pixelThreshold: [10, 150],
-  pressThreshold: [0.04, 0.6],
-  adaptationCeiling: [0.02, 0.45],
-  cooldownMs: [100, 800],
-  zoneHeight: [0.005, 0.45],
-  zonePosition: [0, 1],
-  pixelStep: [1, 5],
-}
+export { FRAME_WIDTH, FRAME_HEIGHT, DEFAULT_SETTINGS }
 
 export function normalizeSettings(value = {}) {
   const result = { ...DEFAULT_SETTINGS }
-  for (const [name, [min, max]] of Object.entries(LIMITS)) {
+  for (const [name, [min, max]] of Object.entries(SETTINGS_LIMITS)) {
     const candidate = Number(value[name])
     if (value[name] != null && Number.isFinite(candidate)) {
       result[name] = Math.min(max, Math.max(min, candidate))
@@ -108,9 +88,10 @@ export class ZoneTracker {
   update(measurements, now, settings) {
     if (measurements.length !== this.states.size) throw new RangeError('Expected one measurement per zone')
     // Preserve the default piano's half-of-zones broad-change guard.
-    const broadChange = measurements.filter(({ ratio }) => ratio >= settings.pressThreshold).length >= measurements.length / 2
+    const broadChange = measurements.filter(({ ratio }) => ratio >= settings.pressThreshold).length
+      >= measurements.length * TRIGGER_POLICY.broadChangeFraction
     const events = []
-    const releaseThreshold = settings.pressThreshold * 0.35
+    const releaseThreshold = settings.pressThreshold * TRIGGER_POLICY.releaseFraction
     for (const { zoneId, ratio } of measurements) {
       const state = this.states.get(zoneId)
       if (!state) throw new RangeError(`Unknown zone: ${zoneId}`)
@@ -127,7 +108,7 @@ export class ZoneTracker {
         }
       } else {
         state.quietFrames = ratio < releaseThreshold ? state.quietFrames + 1 : 0
-        if (state.quietFrames >= 2) {
+        if (state.quietFrames >= TRIGGER_POLICY.rearmQuietFrames) {
           state.armed = true
           state.quietFrames = 0
           events.push({ type: 'release', zoneId })

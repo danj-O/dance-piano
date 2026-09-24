@@ -1,28 +1,6 @@
-// Initial conservative values. Tune against real camera traces before widening
-// the eligible range or shortening the guards.
-export const LOCAL_ADAPTATION = Object.freeze({
-  noiseCeiling: 0.02,
-  noisePressFraction: 0.2,
-  maximumActivity: 0.45,
-  maximumPressFraction: 0.75,
-  stabilityWindowMs: 2000,
-  minimumStableSpanMs: 1500,
-  minimumStableRange: 0.06,
-  maximumStableRange: 0.2,
-  stableRangeFraction: 0.7,
-  minimumActiveFraction: 0.65,
-  normalDwellMs: 600,
-  candidateDwellMs: 4000,
-  postInteractionGraceMs: 3000,
-  sharpRiseMinimum: 0.06,
-  sharpRiseMaximum: 0.12,
-  sharpRiseRangeFraction: 0.5,
-  sharpRiseHoldMs: 2000,
-  baselineTimeConstantMs: 2500,
-  maximumBlendIntervalMs: 100,
-  completionDwellMs: 600,
-  completionFlashMs: 900,
-})
+import { LOCAL_ADAPTATION } from './detection-policy.js'
+
+export { LOCAL_ADAPTATION }
 
 export function effectiveAdaptationCeiling(settings, config = LOCAL_ADAPTATION) {
   return Math.min(settings.adaptationCeiling ?? config.maximumActivity, config.maximumActivity,
@@ -172,7 +150,7 @@ export class LocalAdaptation {
       }
       if (zone.adaptingSince == null) {
         zone.adaptingSince = now
-        zone.adaptationStartActivity = Math.max(recentMean, noise + 0.001)
+        zone.adaptationStartActivity = Math.max(recentMean, noise + cfg.minimumActivityMargin)
         zone.recoveryProgress = 0
       }
       zone.state = 'adapting'

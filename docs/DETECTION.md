@@ -10,6 +10,14 @@ Calibration must operate at the generic zone level so every future module benefi
 
 ---
 
+## Current Implementation (Phase 2D review)
+
+`src/detection-policy.js` is the current source of detector/calibration defaults, limits, and internal timing. `src/detection-runtime.js` owns the tracker and both calibration controllers for a reference; it returns one approved baseline-update map per frame. Global telemetry now counts only **safe low zones**, not high or active zones, and identifies the rearm wait after cooldown. Local telemetry explicitly says when global calibration has paused it. A large camera move can make many keys active and is intentionally blocked from automatic calibration; clear the strip and use the manual reference. See [PHASE_2D_RESULTS.md](PHASE_2D_RESULTS.md) for the full policy inventory and [DETECTION_ACCEPTANCE.md](DETECTION_ACCEPTANCE.md) for physical acceptance.
+
+The numbered implementation sections below record the state reached at each earlier phase; their historical descriptions and source-file locations should not be read as the current code path.
+
+---
+
 ## Current Implementation (Phase 2C global idle calibration)
 
 `GlobalIdleCalibration` observes the same zone readings and Phase 2A telemetry as local adaptation, but has a separate conservative eligibility policy. At least half of the zones (and at least two) must have stable low residual activity before the app pauses local adaptation and starts a five-second global idle dwell. Four additional seconds verify the scene. Any active zone, recent trigger/release, current or recently high occupancy, or unstable activity blocks or cancels the process. A guarded refresh then blends the eligible zone portions of the shared baseline with an 800 ms time constant for up to 2.5 seconds, checking safety on every frame. It does not replace the full camera reference or update pixels outside the zones.

@@ -1,20 +1,19 @@
 import {
   FRAME_HEIGHT, FRAME_WIDTH, DEFAULT_SETTINGS,
-  ZoneTracker, adaptBackground, measureZones, normalizeSettings,
+  adaptBackground, measureZones, normalizeSettings,
 } from './detector.js?v=manual-reference-only'
 import { DanceAudio } from './audio.js?v=mobile-compat'
 import { DEFAULT_MUSIC, addTempoTap, normalizeMusicSettings } from './music.js?v=mobile-compat'
 import { createDefaultLayout, generateZones } from './layout.js?v=module-foundation'
 import { dispatchZoneEvent } from './actions.js?v=module-foundation'
-import { LocalAdaptation, effectiveAdaptationCeiling } from './local-adaptation.js?v=fast-recovery'
-import { GlobalIdleCalibration } from './global-idle-calibration.js?v=global-idle'
+import { effectiveAdaptationCeiling } from './local-adaptation.js?v=fast-recovery'
+import { DetectionRuntime } from './detection-runtime.js?v=phase-2d'
+import { FRAME_FALLBACK_INTERVAL_MS, LOCAL_ADAPTATION, REFERENCE_POLICY, TELEMETRY_PAINT_INTERVAL_MS } from './detection-policy.js'
 
 const STORAGE_KEY = 'dance-keys-settings-v2'
 const PERCENTAGES_KEY = 'dance-keys-show-percentages'
 const MUSIC_KEY = 'dance-keys-music-v1'
 const CAMERA_KEY = 'dance-keys-camera-v1'
-const MANUAL_CAPTURE_DELAY_MS = 2500
-const MANUAL_CAPTURE_TIMEOUT_MS = 5000
 const $ = (id) => document.getElementById(id)
 const stage = $('stage')
 const context = stage.getContext('2d')
@@ -37,9 +36,7 @@ let stream = null
 let video = null
 let background = null
 let referenceReadyAt = 0
-let tracker = new ZoneTracker(zones)
-let adaptation = new LocalAdaptation(zones)
-let globalCalibration = new GlobalIdleCalibration(zones)
+let detection = new DetectionRuntime(zones)
 let measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: 0 }))
 let flashes = new Map(zones.map((zone) => [zone.id, 0]))
 let frameRequest = null
@@ -88,29 +85,41 @@ function adaptationLabel(data) {
 }
 
 function renderTelemetry(now = performance.now()) {
-  if (!showTelemetry || now - lastTelemetryPaint < 250) return
+  if (!showTelemetry || now - lastTelemetryPaint < TELEMETRY_PAINT_INTERVAL_MS) return
   lastTelemetryPaint = now
-  const global = globalCalibration.snapshot(now)
+  const global = detection.global.snapshot(now)
   const globalLabel = {
     normal: 'NORMAL', waiting: 'WAITING FOR HISTORY', candidate: `IDLE ${seconds(global.idleMs)}/${seconds(global.idleDwellMs)}`,
     verifying: `VERIFYING ${seconds(global.verificationMs)}/${seconds(global.verificationDwellMs)}`,
     refreshing: `REFRESHING ${seconds(global.refreshMs)}`,
-    blocked: `BLOCKED — ${global.reason}`, cooldown: `COOLDOWN ${seconds(global.cooldownMs)} remaining`,
+    blocked: `BLOCKED — ${global.reason}`,
+    cooldown: global.cooldownMs > 0 ? `COOLDOWN ${seconds(global.cooldownMs)} remaining`
+      : global.clearMs > 0 ? `REARMING ${seconds(global.clearMs)}/${seconds(global.clearDwellMs)}`
+        : 'WAITING FOR DRIFT TO CLEAR',
   }[global.state]
-  $('global-telemetry-status').textContent = `GLOBAL: ${background ? globalLabel : 'WAITING FOR REFERENCE'} · low drift ${global.driftCount}/${global.requiredDriftCount} zones`
+  const veto = global.activeCount ? ` · ${global.activeCount} active`
+    : global.highCount ? ` · ${global.highCount} high/recent`
+      : global.unstableCount ? ` · ${global.unstableCount} unstable` : ''
+  const manualHint = global.state === 'blocked' && (global.activeCount || global.highCount)
+    ? ' · If the camera moved, clear the strip and calibrate manually.' : ''
+  $('global-telemetry-status').textContent = `GLOBAL: ${background ? globalLabel : 'WAITING FOR REFERENCE'} · safe low zones ${global.driftCount}/${global.requiredDriftCount}${veto}${manualHint}`
   const symbols = '▁▂▃▄▅▆▇█'
   for (const [index, zone] of zones.entries()) {
     const { row, fields } = telemetryRows.get(zone.id)
-    const data = tracker.snapshot(zone.id, now)
-    const local = adaptation.snapshot(zone.id, now)
+    const data = detection.tracker.snapshot(zone.id, now)
+    const local = detection.local.snapshot(zone.id, now)
     const raw = calibration ? measurements[index].ratio : data.rawRatio
     fields[1].textContent = background ? `${Math.round(raw * 100)}%` : '—'
     fields[2].textContent = calibration ? 'CAL' : data.triggerState === 'active' ? 'ACTIVE' : 'armed'
-    fields[3].textContent = calibration ? 'CAL' : background ? adaptationLabel(local) : 'WAIT REF'
-    fields[4].textContent = `R${Math.round(local.recentRange * 100)}%`
+    fields[3].textContent = calibration ? 'CAL' : !background ? 'WAIT REF'
+      : detection.global.suspendsLocal() ? 'PAUSED GLOBAL' : adaptationLabel(local)
+    const recentValues = data.history.filter(({ at }) => at >= now - LOCAL_ADAPTATION.stabilityWindowMs)
+      .map(({ ratio }) => ratio)
+    recentValues.push(data.rawRatio)
+    fields[4].textContent = `R${Math.round((Math.max(...recentValues) - Math.min(...recentValues)) * 100)}%`
     fields[5].textContent = `idle ${seconds(data.inactiveMs)}   T ${seconds(data.sinceTriggerMs)}   R ${seconds(data.sinceReleaseMs)}`
     fields[6].textContent = data.history.slice(-28).map(({ ratio }) => symbols[Math.min(7, Math.floor(ratio * 10))]).join('')
-    row.dataset.state = local.state
+    row.dataset.state = detection.global.suspendsLocal() ? 'paused' : local.state
     row.dataset.trigger = data.triggerState
     row.title = `${zone.id}: recent mean ${Math.round(data.recent.mean * 100)}%, standard deviation ${(data.recent.standardDeviation * 100).toFixed(1)}%, largest sampled rise ${Math.round(data.recent.largestRise * 100)}%`
   }
@@ -124,9 +133,7 @@ function rebuildZones(resetTracker = false) {
   measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: previous.get(zone.id) ?? 0 }))
   flashes = new Map(zones.map((zone) => [zone.id, flashes.get(zone.id) ?? 0]))
   if (resetTracker) {
-    tracker = new ZoneTracker(zones)
-    adaptation = new LocalAdaptation(zones)
-    globalCalibration = new GlobalIdleCalibration(zones)
+    detection = new DetectionRuntime(zones)
   }
   if (showTelemetry) rebuildTelemetryRows()
 }
@@ -294,7 +301,8 @@ function render() {
       context.fillText(`${Math.round(ratio * 100)}%`, x + keyWidth / 2, percentageY)
     }
     context.shadowBlur = 0
-    const local = !calibration && background && !globalCalibration.suspendsLocal() ? adaptation.snapshot(zone.id, now) : null
+    const local = !calibration && background && !detection.global.suspendsLocal()
+      ? detection.local.snapshot(zone.id, now) : null
     if (!active && local && ['candidate', 'adapting', 'recovering', 'complete'].includes(local.state)) {
       const barX = x + 2
       const barWidth = Math.max(0, keyWidth - 4)
@@ -312,8 +320,9 @@ function render() {
       context.globalAlpha = 1
     }
   }
-  if (showTelemetry && globalCalibration.snapshot(now).state === 'refreshing') {
-    const progress = Math.min(1, globalCalibration.snapshot(now).refreshMs / globalCalibration.config.refreshDurationMs)
+  const global = detection.global.snapshot(now)
+  if (showTelemetry && global.state === 'refreshing') {
+    const progress = Math.min(1, global.refreshMs / detection.global.config.refreshDurationMs)
     const barY = y >= 12 ? y - 10 : y + h + 5
     context.fillStyle = '#10131bdd'
     context.fillRect(r.x, barY, r.w, 5)
@@ -339,28 +348,16 @@ function processFrame(id) {
       measurements = measureZones(current, background, FRAME_WIDTH, FRAME_HEIGHT, zones, settings)
       if (!calibration) {
         const now = performance.now()
-        for (const event of tracker.update(measurements, now, settings)) {
+        for (const event of detection.tracker.update(measurements, now, settings)) {
           if (dispatchZoneEvent(event, zonesById, audio)) flashes.set(event.zoneId, now)
         }
-        const global = globalCalibration.update(measurements, tracker, now, settings)
-        if (global.resetLocal) adaptation = new LocalAdaptation(zones)
-        if (global.alphaByZone.size) {
-          adaptBackground(background, current, FRAME_WIDTH, FRAME_HEIGHT, zones, global.alphaByZone)
-        }
-        if (global.completed) {
-          tracker = new ZoneTracker(zones)
-          adaptation = new LocalAdaptation(zones)
-        } else if (!global.suspendLocal) {
-          const alphaByZone = adaptation.update(measurements, tracker, now, settings)
-          adaptBackground(background, current, FRAME_WIDTH, FRAME_HEIGHT, zones, alphaByZone)
-        }
+        const alphaByZone = detection.updateCalibration(measurements, now, settings)
+        adaptBackground(background, current, FRAME_WIDTH, FRAME_HEIGHT, zones, alphaByZone)
       }
     } else if (performance.now() >= referenceReadyAt) {
       background = new Float32Array(current)
       measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: 0 }))
-      tracker = new ZoneTracker(zones)
-      adaptation = new LocalAdaptation(zones)
-      globalCalibration.reset()
+      detection.reset()
       if (calibration) finishCalibration()
       $('welcome').hidden = true
       $('stop').hidden = false
@@ -378,7 +375,7 @@ function scheduleFrame(id) {
   if ('requestVideoFrameCallback' in video) {
     frameRequest = video.requestVideoFrameCallback(() => processFrame(id))
   } else {
-    frameTimer = window.setTimeout(() => processFrame(id), 50)
+    frameTimer = window.setTimeout(() => processFrame(id), FRAME_FALLBACK_INTERVAL_MS)
   }
 }
 
@@ -438,9 +435,7 @@ function releaseCamera() {
   endCalibration()
   measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: 0 }))
   flashes = new Map(zones.map((zone) => [zone.id, 0]))
-  tracker = new ZoneTracker(zones)
-  adaptation = new LocalAdaptation(zones)
-  globalCalibration.reset()
+  detection.reset()
   render()
   renderTelemetry()
 }
@@ -467,7 +462,7 @@ async function openCamera(mode, id, exact = false) {
   const track = acquired.getVideoTracks()[0]
   track.onended = () => stop('Camera disconnected. Start again to reconnect.')
   background = null
-  referenceReadyAt = performance.now() + 1000
+  referenceReadyAt = performance.now() + REFERENCE_POLICY.startupCaptureDelayMs
   scheduleFrame(id)
   const actual = track.getSettings?.().facingMode
   return actual === 'user' || actual === 'environment' ? actual : mode
@@ -551,10 +546,9 @@ for (const name of Object.keys(DEFAULT_SETTINGS)) {
     saveSettings()
     if (name === 'zoneHeight' || name === 'zonePosition') rebuildZones(true)
     if (name === 'pixelStep') {
-      tracker = new ZoneTracker(zones)
-      adaptation = new LocalAdaptation(zones)
+      detection.reset()
     }
-    globalCalibration.reset()
+    if (name !== 'pixelStep' && name !== 'zoneHeight' && name !== 'zonePosition') detection.global.reset()
     syncControls()
   })
 }
@@ -655,19 +649,17 @@ $('calibrate').addEventListener('click', () => {
   if (!video) { $('settings-status').textContent = 'Start the camera before calibrating.'; return }
   const now = performance.now()
   background = null
-  globalCalibration.reset()
-  adaptation = new LocalAdaptation(zones)
-  tracker = new ZoneTracker(zones)
-  referenceReadyAt = now + MANUAL_CAPTURE_DELAY_MS
+  detection.reset()
+  referenceReadyAt = now + REFERENCE_POLICY.manualCaptureDelayMs
   calibration = { timer: null, progressTimer: null }
   calibration.timer = window.setTimeout(() => {
     if (!endCalibration()) return
     referenceReadyAt = Infinity
     $('settings-status').textContent = 'No camera frame was available. Try recalibrating.'
-  }, MANUAL_CAPTURE_TIMEOUT_MS)
+  }, REFERENCE_POLICY.manualCaptureTimeoutMs)
   calibration.progressTimer = window.setInterval(() => {
-    $('calibration-progress').value = Math.min(MANUAL_CAPTURE_DELAY_MS, performance.now() - now)
-  }, 100)
+    $('calibration-progress').value = Math.min(REFERENCE_POLICY.manualCaptureDelayMs, performance.now() - now)
+  }, REFERENCE_POLICY.manualProgressIntervalMs)
   measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: 0 }))
   $('calibrate').disabled = true
   $('calibrate').textContent = 'Calibrating…'

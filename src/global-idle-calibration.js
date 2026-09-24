@@ -1,25 +1,7 @@
-import { LOCAL_ADAPTATION, effectiveAdaptationCeiling } from './local-adaptation.js'
+import { effectiveAdaptationCeiling } from './local-adaptation.js'
+import { GLOBAL_IDLE_CALIBRATION, LOCAL_ADAPTATION } from './detection-policy.js'
 
-// Global refresh deliberately needs broad, quiet evidence. These values are
-// independent of the per-zone candidate and blend timings.
-export const GLOBAL_IDLE_CALIBRATION = Object.freeze({
-  historyWindowMs: 2000,
-  minimumHistorySpanMs: 1500,
-  idleDwellMs: 5000,
-  verificationDwellMs: 4000,
-  interactionQuietMs: 5000,
-  suspiciousQuietMs: 2000,
-  driftZoneFraction: 0.5,
-  maximumPressFraction: 0.5,
-  maximumStableRange: 0.06,
-  stableRangeFraction: 0.5,
-  minimumStableRange: 0.03,
-  refreshTimeConstantMs: 800,
-  refreshDurationMs: 2500,
-  maximumBlendIntervalMs: 100,
-  postRefreshCooldownMs: 20_000,
-  clearDwellMs: 2000,
-})
+export { GLOBAL_IDLE_CALIBRATION }
 
 export class GlobalIdleCalibration {
   constructor(zones, config = GLOBAL_IDLE_CALIBRATION) {
@@ -44,7 +26,11 @@ export class GlobalIdleCalibration {
     this.armed = true
     this.didBlend = false
     this.driftCount = 0
-    this.requiredDriftCount = Math.max(2, Math.ceil(this.zoneIds.length * this.config.driftZoneFraction))
+    this.activeCount = 0
+    this.highCount = 0
+    this.unstableCount = 0
+    this.requiredDriftCount = Math.max(this.config.minimumDriftZones,
+      Math.ceil(this.zoneIds.length * this.config.driftZoneFraction))
   }
 
   suspendsLocal() {
@@ -56,6 +42,9 @@ export class GlobalIdleCalibration {
       state: this.state,
       reason: this.reason,
       driftCount: this.driftCount,
+      activeCount: this.activeCount,
+      highCount: this.highCount,
+      unstableCount: this.unstableCount,
       requiredDriftCount: this.requiredDriftCount,
       idleMs: this.idleSince == null ? 0 : Math.max(0, now - this.idleSince),
       idleDwellMs: this.config.idleDwellMs,
@@ -64,6 +53,8 @@ export class GlobalIdleCalibration {
       refreshMs: this.refreshSince == null ? 0 : Math.max(0, now - this.refreshSince),
       cooldownMs: this.lastSuccessAt == null ? 0 : Math.max(0,
         this.config.postRefreshCooldownMs - (now - this.lastSuccessAt)),
+      clearMs: this.clearSince == null ? 0 : Math.max(0, now - this.clearSince),
+      clearDwellMs: this.config.clearDwellMs,
     }
   }
 
@@ -79,7 +70,10 @@ export class GlobalIdleCalibration {
       Math.max(cfg.minimumStableRange, ceiling * cfg.stableRangeFraction))
     const alphaByZone = new Map()
     let completed = false
-    let reason = null
+    let activeCount = 0
+    let highCount = 0
+    let recentInteractionCount = 0
+    let unstableCount = 0
     let historyReady = true
     let broadDrift = 0
 
@@ -96,23 +90,32 @@ export class GlobalIdleCalibration {
       const maximum = Math.max(...values)
       const range = maximum - Math.min(...values)
       const span = history.length < 2 ? 0 : history.at(-1).at - history[0].at
-      if (mean > noise) broadDrift++
+      const active = data.triggerState === 'active'
+      const high = ratio > ceiling || maximum > ceiling
+      const unstable = this.state === 'refreshing'
+        ? data.lastDelta > stableRange
+        : range > stableRange || data.lastDelta > stableRange
+      if (mean > noise && !active && !high && !recentInteraction && !unstable) broadDrift++
       if (span < cfg.minimumHistorySpanMs) historyReady = false
-      if (data.triggerState === 'active') reason ??= 'ACTIVE ZONE'
-      else if (ratio > ceiling || maximum > ceiling) reason ??= 'HIGH OCCUPANCY'
-      else if (recentInteraction) reason ??= 'RECENT INTERACTION'
-      else if (this.state === 'refreshing') {
-        // Ratios should fall as the baseline changes; a new upward jump is
-        // suspicious, but that expected downward range is not.
-        if (data.lastDelta > stableRange) reason ??= 'SCENE MOVEMENT'
-      } else if (range > stableRange || data.lastDelta > stableRange) {
-        reason ??= 'UNSTABLE SCENE'
-      }
+      if (active) activeCount++
+      if (high) highCount++
+      if (recentInteraction) recentInteractionCount++
+      // During refresh ratios should fall as the baseline catches up; only
+      // a new upward jump counts as movement at that point.
+      if (unstable) unstableCount++
     }
     this.driftCount = broadDrift
+    this.activeCount = activeCount
+    this.highCount = highCount
+    this.unstableCount = unstableCount
+    let reason = null
+    if (activeCount) reason = 'ACTIVE ZONE'
+    else if (highCount) reason = 'HIGH OCCUPANCY'
+    else if (recentInteractionCount) reason = 'RECENT INTERACTION'
+    else if (unstableCount) reason = this.state === 'refreshing' ? 'SCENE MOVEMENT' : 'UNSTABLE SCENE'
 
     if (!this.armed) {
-      if (broadDrift < this.requiredDriftCount) {
+      if (!reason && broadDrift < this.requiredDriftCount) {
         if (this.clearSince == null) this.clearSince = now
       } else {
         this.clearSince = null
