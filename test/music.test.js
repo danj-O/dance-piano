@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  DEFAULT_MUSIC, addTempoTap, buildNotes, delaySeconds, effectSendGain, normalizeMusicSettings,
+  DEFAULT_MUSIC, SOUND_ENVELOPES, addTempoTap, buildNotes, delaySeconds,
+  effectSendGain, effectiveEnvelope, normalizeMusicSettings,
 } from '../src/music.js'
 
 test('default key layout preserves the original low-to-high C major notes', () => {
@@ -64,4 +65,24 @@ test('music setup and tap tempo work without newer Safari helpers', () => {
     Object.hasOwn = hasOwn
     Array.prototype.at = arrayAt
   }
+})
+
+test('legacy music data remains one-shot with the original sound envelope', () => {
+  const value = normalizeMusicSettings({ sound: 'bell', tonic: 'D' })
+  assert.equal(value.noteMode, 'oneShot')
+  assert.equal(value.envelope, null)
+  assert.deepEqual(effectiveEnvelope(value), SOUND_ENVELOPES.bell)
+})
+
+test('note behavior and ADSR round-trip with bounded saved values', () => {
+  const selected = normalizeMusicSettings({ noteMode: 'gate', sound: 'organ', envelope: {
+    attack: 0.25, decay: 0.4, sustain: 0.7, release: 1.2,
+  } })
+  assert.deepEqual(normalizeMusicSettings(JSON.parse(JSON.stringify(selected))), selected)
+  assert.deepEqual(effectiveEnvelope(selected), selected.envelope)
+  const invalid = normalizeMusicSettings({ noteMode: 'invalid', envelope: {
+    attack: -1, decay: 99, sustain: 2, release: -1,
+  } })
+  assert.equal(invalid.noteMode, 'oneShot')
+  assert.deepEqual(invalid.envelope, { attack: 0, decay: 3, sustain: 1, release: 0.02 })
 })

@@ -150,11 +150,13 @@ The combined detector review, policy inventory, telemetry cleanup, and automated
 
 ---
 
-# Phase 3 — Audio Interaction Model
+# Phase 3 — Audio Interaction Model (implemented)
 
 ## Goal
 
 Support explicit `noteOn`/`noteOff` interaction, sustained or gated notes, and ADSR while preserving the current one-shot trigger behavior.
+
+See [PHASE_3_RESULTS.md](PHASE_3_RESULTS.md) for the voice lifecycle, defaults, tests, and physical verification limits.
 
 ---
 

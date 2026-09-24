@@ -8,6 +8,12 @@ It describes the target direction. The current implementation may not yet match 
 
 ---
 
+## Current Implementation (Phase 3 audio interaction)
+
+Generated keyboard zones now carry note actions with an explicit `oneShot` or `gate` mode, sound choice, and optional ADSR override. `src/actions.js` interprets the unchanged detector `trigger`/`release` events. `src/audio.js` owns finite one-shot voices, gated noteOn/noteOff voices, envelope automation, and cleanup. A gated voice is owned by its zone ID, so duplicate pitches from different zones remain independent. The existing default keyboard remains one-shot. See [PHASE_3_RESULTS.md](PHASE_3_RESULTS.md).
+
+---
+
 ## Current Implementation (Phase 2D review)
 
 `DetectionRuntime` coordinates the existing tracker, local adaptation, and global idle calibration for each camera reference. `src/detection-policy.js` centralizes their configuration without changing saved settings. The app continues to own camera lifecycle, action dispatch, and UI. The opt-in debug panel reports safe low-zone counts and blocked/rearm reasons. See [PHASE_2D_RESULTS.md](PHASE_2D_RESULTS.md) and [DETECTION_ACCEPTANCE.md](DETECTION_ACCEPTANCE.md). Earlier numbered implementation sections are historical snapshots.

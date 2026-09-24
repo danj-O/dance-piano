@@ -15,12 +15,41 @@ export const MODES = Object.freeze({
 
 export const SOUND_NAMES = ['softKeys', 'bell', 'pluck', 'brightSynth', 'organ']
 export const DELAY_DIVISIONS = { quarter: 1, eighth: 0.5, dottedEighth: 0.75 }
+export const NOTE_MODES = ['oneShot', 'gate']
+export const SOUND_ENVELOPES = Object.freeze({
+  softKeys: Object.freeze({ attack: 0.008, decay: 0.16, sustain: 0.25, release: 0.42 }),
+  bell: Object.freeze({ attack: 0.004, decay: 0.5, sustain: 0.08, release: 0.9 }),
+  pluck: Object.freeze({ attack: 0.004, decay: 0.12, sustain: 0.12, release: 0.28 }),
+  brightSynth: Object.freeze({ attack: 0.012, decay: 0.18, sustain: 0.42, release: 0.34 }),
+  organ: Object.freeze({ attack: 0.02, decay: 0.06, sustain: 0.8, release: 0.3 }),
+})
+export const ENVELOPE_LIMITS = Object.freeze({
+  attack: [0, 1.5], decay: [0, 3], sustain: [0, 1], release: [0.02, 5],
+})
+
+export function normalizeEnvelope(value, sound = 'softKeys') {
+  const result = { ...(SOUND_ENVELOPES[sound] ?? SOUND_ENVELOPES.softKeys) }
+  for (const [name, [min, max]] of Object.entries(ENVELOPE_LIMITS)) {
+    const candidate = Number(value?.[name])
+    if (value?.[name] != null && Number.isFinite(candidate)) {
+      result[name] = Math.min(max, Math.max(min, candidate))
+    }
+  }
+  return result
+}
+
+export function effectiveEnvelope(settings) {
+  return settings.envelope == null ? { ...(SOUND_ENVELOPES[settings.sound] ?? SOUND_ENVELOPES.softKeys) }
+    : normalizeEnvelope(settings.envelope, settings.sound)
+}
 
 export const DEFAULT_MUSIC = Object.freeze({
   tonic: 'C',
   mode: 'major',
   octave: 3,
   sound: 'softKeys',
+  noteMode: 'oneShot',
+  envelope: null, // null keeps the current sound's original amplitude character.
   reverbOn: false,
   reverbMix: 0.2,
   delayOn: false,
@@ -34,6 +63,10 @@ export function normalizeMusicSettings(value = {}) {
   if (TONICS.includes(value.tonic)) result.tonic = value.tonic
   if (Object.prototype.hasOwnProperty.call(MODES, value.mode)) result.mode = value.mode
   if (SOUND_NAMES.includes(value.sound)) result.sound = value.sound
+  if (NOTE_MODES.includes(value.noteMode)) result.noteMode = value.noteMode
+  if (value.envelope && typeof value.envelope === 'object' && !Array.isArray(value.envelope)) {
+    result.envelope = normalizeEnvelope(value.envelope, result.sound)
+  }
   if (Object.prototype.hasOwnProperty.call(DELAY_DIVISIONS, value.delayDivision)) result.delayDivision = value.delayDivision
   for (const name of ['reverbOn', 'delayOn']) {
     if (typeof value[name] === 'boolean') result[name] = value[name]

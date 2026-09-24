@@ -1,4 +1,4 @@
-import { buildNotes } from './music.js?v=mobile-compat'
+import { buildNotes } from './music.js?v=phase-3'
 
 export const LAYOUT_VERSION = 1
 export const CLASSIC_KEY_COUNT = 16
@@ -28,6 +28,11 @@ export function createDefaultLayout(settings, musicSettings) {
         tonic: musicSettings.tonic,
         mode: musicSettings.mode,
         octave: musicSettings.octave,
+        note: {
+          mode: musicSettings.noteMode ?? 'oneShot',
+          sound: musicSettings.sound,
+          envelope: musicSettings.envelope == null ? null : { ...musicSettings.envelope },
+        },
       },
     }],
   }
@@ -52,7 +57,12 @@ export function generateZones(layout) {
           width: module.transform.width / keys,
           height: module.transform.height,
         },
-        action: { type: 'note', note: notes[index] },
+        action: {
+          type: 'note', note: notes[index],
+          mode: module.config.note?.mode ?? 'oneShot',
+          sound: module.config.note?.sound ?? 'softKeys',
+          envelope: module.config.note?.envelope == null ? null : { ...module.config.note.envelope },
+        },
       })
     }
   }

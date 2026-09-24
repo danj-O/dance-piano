@@ -31,7 +31,7 @@ test('mirrored screen order and note actions preserve low-to-high visible pitch'
   const screenOrder = [...zones].reverse()
   assert.deepEqual(screenOrder.map(({ action }) => action.note), buildNotes(DEFAULT_MUSIC, 16))
   const played = []
-  const audio = { play: (note) => played.push(note) }
+  const audio = { trigger: (note) => played.push(note) }
   const zoneMap = new Map(zones.map((zone) => [zone.id, zone]))
   assert.equal(dispatchZoneEvent({ type: 'trigger', zoneId: zones[15].id }, zoneMap, audio), true)
   assert.equal(dispatchZoneEvent({ type: 'release', zoneId: zones[15].id }, zoneMap, audio), false)
@@ -44,4 +44,22 @@ test('key count can vary internally without changing the default piano', () => {
   const zones = generateZones(layout)
   assert.equal(zones.length, 8)
   assert.equal(zones[0].geometry.width, 1 / 8)
+})
+
+test('keyboard modules can supply independent note behavior and envelope actions', () => {
+  const layout = createDefaultLayout(DEFAULT_SETTINGS, DEFAULT_MUSIC)
+  layout.modules[0].config.keys = 1
+  layout.modules.push({
+    id: 'keyboard-2', type: 'keyboard',
+    transform: { x: 0, y: 0.5, width: 0.25, height: 0.1 },
+    config: { ...layout.modules[0].config, note: {
+      mode: 'gate', sound: 'organ', envelope: { attack: 0.1, decay: 0.2, sustain: 0.7, release: 0.5 },
+    } },
+  })
+  const [oneShot, gated] = generateZones(layout)
+  assert.equal(oneShot.action.mode, 'oneShot')
+  assert.equal(gated.action.mode, 'gate')
+  assert.equal(gated.action.sound, 'organ')
+  assert.equal(gated.action.note, oneShot.action.note)
+  assert.equal(gated.action.envelope.sustain, 0.7)
 })

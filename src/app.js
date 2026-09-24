@@ -2,10 +2,10 @@ import {
   FRAME_HEIGHT, FRAME_WIDTH, DEFAULT_SETTINGS,
   adaptBackground, measureZones, normalizeSettings,
 } from './detector.js?v=manual-reference-only'
-import { DanceAudio } from './audio.js?v=mobile-compat'
-import { DEFAULT_MUSIC, addTempoTap, normalizeMusicSettings } from './music.js?v=mobile-compat'
-import { createDefaultLayout, generateZones } from './layout.js?v=module-foundation'
-import { dispatchZoneEvent } from './actions.js?v=module-foundation'
+import { DanceAudio } from './audio.js?v=phase-3'
+import { DEFAULT_MUSIC, addTempoTap, effectiveEnvelope, normalizeMusicSettings } from './music.js?v=phase-3'
+import { createDefaultLayout, generateZones } from './layout.js?v=phase-3'
+import { dispatchZoneEvent } from './actions.js?v=phase-3'
 import { effectiveAdaptationCeiling } from './local-adaptation.js?v=fast-recovery'
 import { DetectionRuntime } from './detection-runtime.js?v=phase-2d'
 import { FRAME_FALLBACK_INTERVAL_MS, LOCAL_ADAPTATION, REFERENCE_POLICY, TELEMETRY_PAINT_INTERVAL_MS } from './detection-policy.js'
@@ -133,6 +133,7 @@ function rebuildZones(resetTracker = false) {
   measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: previous.get(zone.id) ?? 0 }))
   flashes = new Map(zones.map((zone) => [zone.id, flashes.get(zone.id) ?? 0]))
   if (resetTracker) {
+    audio?.allNotesOff()
     detection = new DetectionRuntime(zones)
   }
   if (showTelemetry) rebuildTelemetryRows()
@@ -202,8 +203,14 @@ function syncControls() {
 }
 
 function syncMusicControls() {
-  for (const name of ['tonic', 'mode', 'octave', 'sound', 'delayDivision', 'bpm']) {
+  for (const name of ['tonic', 'mode', 'octave', 'sound', 'noteMode', 'delayDivision', 'bpm']) {
     $(name).value = musicSettings[name]
+  }
+  const envelope = effectiveEnvelope(musicSettings)
+  for (const name of ['attack', 'decay', 'sustain', 'release']) {
+    $(name).value = envelope[name]
+    $(`${name}-value`).textContent = name === 'sustain'
+      ? `${Math.round(envelope[name] * 100)}%` : `${Number(envelope[name].toFixed(3))} s`
   }
   for (const name of ['reverbMix', 'delayMix']) {
     const percent = Math.round(musicSettings[name] * 100)
@@ -218,6 +225,7 @@ function syncMusicControls() {
 }
 
 function updateMusic(name, value) {
+  if (['tonic', 'mode', 'octave', 'sound', 'noteMode'].includes(name)) audio?.allNotesOff()
   musicSettings = normalizeMusicSettings({ ...musicSettings, [name]: value })
   rebuildZones()
   saveMusicSettings()
@@ -420,6 +428,7 @@ async function ensureAudio() {
 }
 
 function releaseCamera() {
+  audio?.allNotesOff()
   if (video && frameRequest != null && 'cancelVideoFrameCallback' in video) video.cancelVideoFrameCallback(frameRequest)
   window.clearTimeout(frameTimer)
   frameRequest = null
@@ -546,13 +555,14 @@ for (const name of Object.keys(DEFAULT_SETTINGS)) {
     saveSettings()
     if (name === 'zoneHeight' || name === 'zonePosition') rebuildZones(true)
     if (name === 'pixelStep') {
+      audio?.allNotesOff()
       detection.reset()
     }
     if (name !== 'pixelStep' && name !== 'zoneHeight' && name !== 'zonePosition') detection.global.reset()
     syncControls()
   })
 }
-for (const name of ['tonic', 'mode', 'octave', 'sound', 'delayDivision', 'bpm', 'reverbMix', 'delayMix', 'reverbOn', 'delayOn']) {
+for (const name of ['tonic', 'mode', 'octave', 'sound', 'noteMode', 'delayDivision', 'bpm', 'reverbMix', 'delayMix', 'reverbOn', 'delayOn']) {
   const input = $(name)
   input.addEventListener(input.type === 'range' ? 'input' : 'change', () => {
     const value = input.type === 'checkbox' ? input.checked : input.type === 'range' || name === 'octave' ? Number(input.value) : input.value
@@ -560,6 +570,12 @@ for (const name of ['tonic', 'mode', 'octave', 'sound', 'delayDivision', 'bpm', 
     updateMusic(name, value)
   })
 }
+for (const name of ['attack', 'decay', 'sustain', 'release']) {
+  $(name).addEventListener('input', (event) => {
+    updateMusic('envelope', { ...effectiveEnvelope(musicSettings), [name]: Number(event.target.value) })
+  })
+}
+$('reset-envelope').addEventListener('click', () => updateMusic('envelope', null))
 for (const name of ['reverbMix', 'delayMix']) {
   $(`${name}-number`).addEventListener('change', (event) => {
     const input = event.target
@@ -585,7 +601,8 @@ $('preview-sound').addEventListener('click', async () => {
   button.disabled = true
   try {
     await ensureAudio()
-    audio.play(zones[Math.floor(zones.length / 2)].action.note)
+    const action = zones[Math.floor(zones.length / 2)].action
+    audio.trigger(action.note, { sound: action.sound, envelope: action.envelope })
     $('settings-status').textContent = 'Previewing the selected sound.'
   } catch (error) {
     $('settings-status').textContent = `Sound preview failed: ${error.message}`
@@ -647,6 +664,7 @@ $('recommended-sensitivity').addEventListener('click', () => {
 })
 $('calibrate').addEventListener('click', () => {
   if (!video) { $('settings-status').textContent = 'Start the camera before calibrating.'; return }
+  audio?.allNotesOff()
   const now = performance.now()
   background = null
   detection.reset()
