@@ -36,6 +36,10 @@ function reverbImpulse(context) {
 }
 
 export class DanceAudio {
+  constructor() {
+    this.muted = false
+  }
+
   async start(settings) {
     this.context = new AudioContext()
     this.voices = new Set()
@@ -45,7 +49,9 @@ export class DanceAudio {
     const compressor = ctx.createDynamicsCompressor()
     compressor.threshold.value = -18
     compressor.ratio.value = 4
-    compressor.connect(ctx.destination)
+    this.output = ctx.createGain()
+    this.output.gain.value = this.muted ? 0 : 1
+    compressor.connect(this.output).connect(ctx.destination)
 
     const dry = ctx.createGain()
     dry.gain.value = 0.85
@@ -69,6 +75,15 @@ export class DanceAudio {
 
     this.setSettings(settings)
     await ctx.resume()
+  }
+
+  setMuted(muted) {
+    this.muted = Boolean(muted)
+    if (!this.context || this.context.state === 'closed') return
+    const now = this.context.currentTime
+    this.output.gain.cancelScheduledValues(now)
+    this.output.gain.setTargetAtTime(this.muted ? 0 : 1, now, 0.008)
+    if (this.muted) this.output.gain.setValueAtTime(0, now + 0.08)
   }
 
   setSettings(settings) {

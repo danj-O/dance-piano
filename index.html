@@ -5,15 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#10131b" />
     <title>Dance Keys</title>
-    <link rel="stylesheet" href="styles.css?v=manual-reference-only" />
-    <script type="module" src="src/app.js?v=phase-3"></script>
+    <link rel="stylesheet" href="styles.css?v=performance-controls" />
+    <script type="module" src="src/app.js?v=performance-controls"></script>
   </head>
   <body>
     <canvas id="stage" aria-label="Mirrored camera view with sixteen playable key zones"></canvas>
     <header class="toolbar">
       <div class="brand">Dance Keys <span>floor piano</span></div>
       <div class="toolbar-actions">
-        <button id="stop" type="button" hidden>Stop camera</button>
+        <div id="performance-actions" class="performance-actions" hidden>
+          <button id="stop" type="button" hidden>Stop camera</button>
+          <button id="quick-calibrate" type="button" aria-live="polite" hidden>Calibrate</button>
+          <button id="mute-toggle" type="button" aria-pressed="false" hidden>Mute</button>
+        </div>
         <button id="settings-toggle" type="button" aria-controls="settings-panel" aria-expanded="false">Settings</button>
       </div>
     </header>
@@ -23,34 +27,29 @@
       <button id="start" class="primary" type="button">Start camera and sound</button>
       <p id="status" class="status" role="status" aria-live="polite">Ready when you are.</p>
     </main>
-    <aside id="settings-panel" class="settings" aria-labelledby="settings-heading" hidden>
+    <div id="settings-backdrop" class="settings-backdrop" hidden></div>
+    <aside id="settings-panel" class="settings" role="dialog" aria-modal="true" aria-labelledby="settings-heading" hidden>
       <div class="settings-heading">
-        <div><h2 id="settings-heading">Settings</h2><p>Adjust for your room. Changes save in this browser.</p></div>
-        <button id="settings-close" type="button" aria-label="Close settings">×</button>
+        <button id="settings-back" type="button" hidden>‹ <span>Settings</span></button>
+        <h2 id="settings-heading">Settings</h2>
+        <button id="settings-close" type="button" aria-label="Close settings">Close</button>
       </div>
-      <div class="calibration-card">
-        <button id="calibrate" type="button">Calibrate empty floor</button>
-        <button id="recommended-sensitivity" type="button" hidden>Use 30% step sensitivity</button>
-        <progress id="calibration-progress" max="2500" value="0" aria-label="Calibration progress" hidden></progress>
-        <p id="settings-status" class="status" role="status" aria-live="polite">Move out of the key strip before calibrating.</p>
-      </div>
-      <div class="control">
-        <label for="camera-facing">Camera</label>
-        <select id="camera-facing">
-          <option value="user">Front camera</option>
-          <option value="environment">Rear camera</option>
-        </select>
-        <small>Switching cameras captures a new empty-floor reference. Keep the key strip clear.</small>
-      </div>
-      <label class="display-toggle" for="show-percentages">
-        <span><strong>Show key percentages</strong><small>Keep the live occupancy numbers visible while playing.</small></span>
-        <input id="show-percentages" type="checkbox" />
-      </label>
-      <label class="display-toggle" for="show-telemetry">
-        <span><strong>Show detector telemetry</strong><small>Temporary debug view of activity, state, and timing. This choice is not saved.</small></span>
-        <input id="show-telemetry" type="checkbox" />
-      </label>
-      <h3 class="section-heading">Music</h3>
+      <div class="settings-scroll" id="settings-scroll">
+      <p id="settings-status" class="settings-status" role="status" aria-live="polite">Changes save in this browser.</p>
+      <section class="settings-page" data-settings-page="root" aria-label="Settings categories">
+        <p class="settings-intro">Shape the instrument, sound, and camera for your space.</p>
+        <nav class="settings-categories" aria-label="Settings categories">
+          <button type="button" data-open-settings="instrument"><span><strong>Instrument</strong><small>Notes, sound, and envelope</small></span><span aria-hidden="true">›</span></button>
+          <button type="button" data-open-settings="effects"><span><strong>Effects</strong><small>Reverb, delay, and tempo</small></span><span aria-hidden="true">›</span></button>
+          <button type="button" data-open-settings="camera"><span><strong>Camera &amp; Display</strong><small>Camera and key strip view</small></span><span aria-hidden="true">›</span></button>
+          <button type="button" data-open-settings="detection"><span><strong>Detection</strong><small>Sensitivity and calibration</small></span><span aria-hidden="true">›</span></button>
+        </nav>
+        <div class="settings-actions"><button id="reset" type="button">Reset all settings to defaults</button></div>
+        <p class="settings-tip">Press <kbd>D</kbd> to open or close Settings.</p>
+      </section>
+      <section class="settings-page" data-settings-page="instrument" aria-label="Instrument settings" hidden>
+      <div class="settings-group" id="instrument-controls">
+      <h3 class="section-heading">Keyboard</h3>
       <div class="select-grid">
         <div class="control">
           <label for="tonic">Key</label>
@@ -86,14 +85,14 @@
           <option value="organ">Organ</option>
         </select>
       </div>
-      <div class="control">
-        <label for="noteMode">Note behavior</label>
-        <select id="noteMode">
-          <option value="oneShot">One-shot</option>
-          <option value="gate">Gate — sustain while held</option>
-        </select>
-        <small>One-shot plays a short note on entry. Gate holds the note until the key releases.</small>
-      </div>
+      <fieldset class="segmented-choice">
+        <legend>Note behavior</legend>
+        <div class="segmented-options">
+          <label><input type="radio" name="noteMode" value="oneShot" /><span>One-shot</span></label>
+          <label><input type="radio" name="noteMode" value="gate" /><span>Gate · hold</span></label>
+        </div>
+        <small>One-shot plays on entry. Gate sustains until the key releases.</small>
+      </fieldset>
       <h3 class="section-heading">Amplitude envelope</h3>
       <div class="control">
         <label for="attack">Attack <output id="attack-value"></output></label>
@@ -115,8 +114,11 @@
       <button id="reset-envelope" type="button">Use sound defaults</button>
       <p class="settings-tip">Envelope edits affect new notes. Changing the note behavior, sound, key, scale, or octave releases held notes.</p>
       <button id="preview-sound" type="button">Preview sound</button>
-
-      <h3 class="section-heading">Effects</h3>
+      </div>
+      </section>
+      <section class="settings-page" data-settings-page="effects" aria-label="Effects settings" hidden>
+      <div class="settings-group">
+      <h3 class="section-heading">Space &amp; echo</h3>
       <label class="display-toggle" for="reverbOn">
         <span><strong>Reverb</strong><small>Add space around each note.</small></span>
         <input id="reverbOn" type="checkbox" />
@@ -154,8 +156,39 @@
         <input id="bpm" type="range" min="40" max="220" step="1" />
         <div class="tempo-actions"><button id="tap-tempo" type="button">Tap tempo</button><span id="tap-hint">Tap at least twice to set BPM.</span></div>
       </div>
-
-      <h3 class="section-heading">Detection</h3>
+      </div>
+      </section>
+      <section class="settings-page" data-settings-page="camera" aria-label="Camera and display settings" hidden>
+      <div class="settings-group">
+      <h3 class="section-heading">Camera</h3>
+      <div class="control">
+        <label for="camera-facing">Camera</label>
+        <select id="camera-facing">
+          <option value="user">Front camera</option>
+          <option value="environment">Rear camera</option>
+        </select>
+        <small>Switching cameras captures a new empty-floor reference. Keep the key strip clear.</small>
+      </div>
+      <h3 class="section-heading">Key strip</h3>
+      <div class="control">
+        <label for="zoneHeight">Key strip height <output id="zoneHeight-value"></output></label>
+        <input id="zoneHeight" type="range" min="0.005" max="0.45" step="0.005" />
+        <small>As thin as 0.5% of the frame. Very thin strips need steadier placement.</small>
+      </div>
+      <div class="control">
+        <label for="zonePosition">Key strip position <output id="zonePosition-value"></output></label>
+        <input id="zonePosition" type="range" min="0" max="1" step="0.01" />
+        <small>0 is at the top; 100% is at the bottom.</small>
+      </div>
+      <label class="display-toggle" for="show-percentages">
+        <span><strong>Show key percentages</strong><small>Keep the live occupancy numbers visible while playing.</small></span>
+        <input id="show-percentages" type="checkbox" />
+      </label>
+      </div>
+      </section>
+      <section class="settings-page" data-settings-page="detection" aria-label="Detection settings" hidden>
+      <div class="settings-group">
+      <h3 class="section-heading">Sensitivity</h3>
       <div class="control">
         <label for="pixelThreshold">Pixel sensitivity <output id="pixelThreshold-value"></output></label>
         <input id="pixelThreshold" type="range" min="10" max="150" step="5" />
@@ -176,25 +209,27 @@
         <input id="cooldownMs" type="range" min="100" max="800" step="25" />
         <small>Minimum time between notes on the same key.</small>
       </div>
-      <div class="control">
-        <label for="zoneHeight">Key strip height <output id="zoneHeight-value"></output></label>
-        <input id="zoneHeight" type="range" min="0.005" max="0.45" step="0.005" />
-        <small>As thin as 0.5% of the frame. Very thin strips need steadier placement.</small>
+      <div class="calibration-card">
+        <button id="calibrate" type="button">Calibrate empty floor</button>
+        <button id="recommended-sensitivity" type="button" hidden>Use 30% step sensitivity</button>
+        <progress id="calibration-progress" max="2500" value="0" aria-label="Calibration progress" hidden></progress>
+        <p class="settings-tip">Move out of the key strip before calibrating. Step sensitivity stays the same.</p>
       </div>
-      <div class="control">
-        <label for="zonePosition">Key strip position <output id="zonePosition-value"></output></label>
-        <input id="zonePosition" type="range" min="0" max="1" step="0.01" />
-        <small>0 is at the top; 100% is at the bottom.</small>
-      </div>
+      <details class="settings-advanced">
+        <summary>Advanced detection &amp; diagnostics</summary>
       <div class="control">
         <label for="pixelStep">Pixel sample step <output id="pixelStep-value"></output></label>
         <input id="pixelStep" type="range" min="1" max="5" step="1" />
         <small>Higher uses less CPU. The occupied percentage stays proportional to the sampled area.</small>
       </div>
-      <div class="settings-actions">
-        <button id="reset" type="button">Reset defaults</button>
+      <label class="display-toggle" for="show-telemetry">
+        <span><strong>Show detector telemetry</strong><small>Temporary view of activity, state, and timing. This choice is not saved.</small></span>
+        <input id="show-telemetry" type="checkbox" />
+      </label>
+      </details>
       </div>
-      <p class="settings-tip">Green means a note just played; yellow means the key remains occupied. Show key percentages controls the live numbers. Recalibration refreshes the floor reference and keeps Step sensitivity unchanged. Press <kbd>D</kbd> to toggle this panel.</p>
+      </section>
+      </div>
     </aside>
     <aside id="telemetry-panel" class="telemetry-panel" aria-label="Detector telemetry" hidden>
       <div class="telemetry-heading"><strong>Detector telemetry</strong><button id="telemetry-close" type="button" aria-label="Hide detector telemetry">×</button></div>

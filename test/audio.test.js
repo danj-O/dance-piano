@@ -166,6 +166,23 @@ test('new settings affect only new voices and existing effects send updates rema
   await audio.stop()
 })
 
+test('master mute controls the combined output without ending held voices', async () => {
+  const { audio, context } = await setup({ reverbOn: true, delayOn: true })
+  const voice = audio.noteOn('C4', { voiceId: 'zone-a' })
+  assert.equal(audio.output.connections[0], context.destination)
+  assert.equal(audio.output.gain.value, 1)
+  audio.setMuted(true)
+  assert.equal(audio.muted, true)
+  assert.deepEqual(audio.output.gain.events.slice(-3), [
+    ['cancel', 10], ['target', 0, 10, 0.008], ['set', 0, 10.08],
+  ])
+  assert.equal(audio.gatedVoices.get('zone-a'), voice)
+  audio.setMuted(false)
+  assert.deepEqual(audio.output.gain.events.slice(-2), [['cancel', 10], ['target', 1, 10, 0.008]])
+  assert.equal(audio.gatedVoices.get('zone-a'), voice)
+  await audio.stop()
+})
+
 test('invalid note cannot leave a partial voice behind', async () => {
   const { audio } = await setup()
   assert.throws(() => audio.noteOn('H4', { voiceId: 'a' }), /Invalid note/)

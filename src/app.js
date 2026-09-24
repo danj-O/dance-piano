@@ -9,6 +9,7 @@ import { dispatchZoneEvent } from './actions.js?v=phase-3'
 import { effectiveAdaptationCeiling } from './local-adaptation.js?v=fast-recovery'
 import { DetectionRuntime } from './detection-runtime.js?v=phase-2d'
 import { FRAME_FALLBACK_INTERVAL_MS, LOCAL_ADAPTATION, REFERENCE_POLICY, TELEMETRY_PAINT_INTERVAL_MS } from './detection-policy.js'
+import { createSettingsNavigation, SETTINGS_PAGES } from './settings-navigation.js?v=phase-4'
 
 const STORAGE_KEY = 'dance-keys-settings-v2'
 const PERCENTAGES_KEY = 'dance-keys-show-percentages'
@@ -32,6 +33,7 @@ let zonesById = new Map(zones.map((zone) => [zone.id, zone]))
 let tempoTaps = []
 let audio = null
 let audioStartPromise = null
+let muted = false
 let stream = null
 let video = null
 let background = null
@@ -43,10 +45,12 @@ let frameRequest = null
 let frameTimer = null
 let runId = 0
 let calibration = null
+let calibrationFeedbackTimer = null
 let cameraBusy = false
 let showTelemetry = false
 let telemetryRows = new Map()
 let lastTelemetryPaint = -Infinity
+const settingsNavigation = createSettingsNavigation()
 
 function rebuildTelemetryRows() {
   const container = $('telemetry-rows')
@@ -203,8 +207,11 @@ function syncControls() {
 }
 
 function syncMusicControls() {
-  for (const name of ['tonic', 'mode', 'octave', 'sound', 'noteMode', 'delayDivision', 'bpm']) {
+  for (const name of ['tonic', 'mode', 'octave', 'sound', 'delayDivision', 'bpm']) {
     $(name).value = musicSettings[name]
+  }
+  for (const input of document.querySelectorAll('input[name="noteMode"]')) {
+    input.checked = input.value === musicSettings.noteMode
   }
   const envelope = effectiveEnvelope(musicSettings)
   for (const name of ['attack', 'decay', 'sustain', 'release']) {
@@ -233,15 +240,60 @@ function updateMusic(name, value) {
   syncMusicControls()
 }
 
-function setPanel(open) {
+function renderSettingsNavigation() {
+  const { open, page } = settingsNavigation
   $('settings-panel').hidden = !open
+  $('settings-backdrop').hidden = !open
   $('settings-toggle').setAttribute('aria-expanded', String(open))
-  if (!open) $('settings-toggle').focus()
-  else {
-    $('settings-panel').scrollTop = 0
-    $('settings-close').focus()
+  for (const element of [stage, document.querySelector('.toolbar'), $('welcome'), $('telemetry-panel')]) {
+    element.inert = open
   }
+  $('settings-heading').textContent = SETTINGS_PAGES[page]
+  $('settings-back').hidden = page === 'root'
+  for (const view of document.querySelectorAll('[data-settings-page]')) {
+    view.hidden = view.dataset.settingsPage !== page
+  }
+  $('settings-scroll').scrollTop = 0
   render()
+}
+
+function setPanel(open) {
+  if (open) settingsNavigation.show()
+  else settingsNavigation.close()
+  renderSettingsNavigation()
+  if (open) $('settings-close').focus()
+  else $('settings-toggle').focus()
+}
+
+function openSettingsPage(page) {
+  if (!settingsNavigation.visit(page)) return
+  if (!calibration && !cameraBusy) $('settings-status').textContent = 'Changes save in this browser.'
+  renderSettingsNavigation()
+  $('settings-back').focus()
+}
+
+function backSettings() {
+  const previous = settingsNavigation.page
+  if (!settingsNavigation.back()) return
+  if (!calibration && !cameraBusy) $('settings-status').textContent = 'Changes save in this browser.'
+  renderSettingsNavigation()
+  document.querySelector(`[data-open-settings="${previous}"]`).focus()
+}
+
+function keepSettingsFocus(event) {
+  if (event.key !== 'Tab' || !settingsNavigation.open) return
+  const controls = [...$('settings-panel').querySelectorAll('button, input, select, summary')]
+    .filter((element) => !element.disabled && element.getClientRects().length)
+  const first = controls[0]
+  const last = controls[controls.length - 1]
+  if (!first) return
+  if (event.shiftKey && (document.activeElement === first || !$('settings-panel').contains(document.activeElement))) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && (document.activeElement === last || !$('settings-panel').contains(document.activeElement))) {
+    event.preventDefault()
+    first.focus()
+  }
 }
 
 function resize() {
@@ -369,6 +421,10 @@ function processFrame(id) {
       if (calibration) finishCalibration()
       $('welcome').hidden = true
       $('stop').hidden = false
+      $('performance-actions').hidden = false
+      $('quick-calibrate').hidden = false
+      $('mute-toggle').hidden = false
+      syncQuickCalibrateAvailability()
     }
     render()
     renderTelemetry()
@@ -395,6 +451,9 @@ function endCalibration() {
   $('calibrate').disabled = false
   $('calibrate').textContent = 'Calibrate empty floor'
   $('calibration-progress').hidden = true
+  $('quick-calibrate').textContent = 'Calibrate'
+  $('quick-calibrate').dataset.state = 'idle'
+  syncQuickCalibrateAvailability()
   render()
   return true
 }
@@ -402,6 +461,29 @@ function endCalibration() {
 function finishCalibration() {
   if (!endCalibration()) return
   $('settings-status').textContent = `Floor reference refreshed. Step sensitivity remains ${formatSetting('pressThreshold', settings.pressThreshold)}.`
+  $('quick-calibrate').textContent = 'Calibrated ✓'
+  $('quick-calibrate').dataset.state = 'done'
+  syncQuickCalibrateAvailability()
+  window.clearTimeout(calibrationFeedbackTimer)
+  calibrationFeedbackTimer = window.setTimeout(() => {
+    $('quick-calibrate').textContent = 'Calibrate'
+    $('quick-calibrate').dataset.state = 'idle'
+    syncQuickCalibrateAvailability()
+    calibrationFeedbackTimer = null
+  }, 1800)
+}
+
+function setMuted(value) {
+  muted = Boolean(value)
+  audio?.setMuted(muted)
+  $('mute-toggle').setAttribute('aria-pressed', String(muted))
+  $('mute-toggle').textContent = muted ? 'Unmute' : 'Mute'
+}
+
+function syncQuickCalibrateAvailability() {
+  const retry = $('quick-calibrate').dataset.state === 'error'
+  const done = $('quick-calibrate').dataset.state === 'done'
+  $('quick-calibrate').disabled = !video || cameraBusy || Boolean(calibration) || done || (!background && !retry)
 }
 
 function cameraError(error) {
@@ -422,7 +504,8 @@ async function ensureAudio() {
   }
   if (!audioStartPromise) {
     audio = new DanceAudio()
-    audioStartPromise = audio.start(musicSettings).finally(() => { audioStartPromise = null })
+    audioStartPromise = audio.start(musicSettings).then(() => audio.setMuted(muted))
+      .finally(() => { audioStartPromise = null })
   }
   await audioStartPromise
 }
@@ -441,7 +524,12 @@ function releaseCamera() {
   video = null
   background = null
   referenceReadyAt = 0
+  window.clearTimeout(calibrationFeedbackTimer)
+  calibrationFeedbackTimer = null
   endCalibration()
+  $('quick-calibrate').disabled = true
+  $('quick-calibrate').textContent = 'Calibrate'
+  $('quick-calibrate').dataset.state = 'idle'
   measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: 0 }))
   flashes = new Map(zones.map((zone) => [zone.id, 0]))
   detection.reset()
@@ -495,7 +583,11 @@ async function start() {
     if (id === runId) await stop(cameraError(error))
   } finally {
     button.disabled = false
-    if (id === runId) { cameraBusy = false; $('camera-facing').disabled = false }
+    if (id === runId) {
+      cameraBusy = false
+      $('camera-facing').disabled = false
+      syncQuickCalibrateAvailability()
+    }
   }
 }
 
@@ -510,6 +602,7 @@ async function switchCamera(mode) {
   const id = ++runId
   cameraBusy = true
   $('camera-facing').disabled = true
+  $('quick-calibrate').disabled = true
   $('settings-status').textContent = 'Switching cameras. Keep the key strip clear for a new floor reference…'
   releaseCamera()
   try {
@@ -531,7 +624,11 @@ async function switchCamera(mode) {
       await stop(`Could not restart the camera after switching: ${cameraError(error)}`)
     }
   } finally {
-    if (id === runId) { cameraBusy = false; $('camera-facing').disabled = false }
+    if (id === runId) {
+      cameraBusy = false
+      $('camera-facing').disabled = false
+      syncQuickCalibrateAvailability()
+    }
   }
 }
 
@@ -543,6 +640,7 @@ async function stop(message = 'Camera stopped. Start again when ready.') {
   $('camera-facing').value = cameraFacing
   $('welcome').hidden = false
   $('stop').hidden = true
+  $('performance-actions').hidden = true
   $('status').textContent = message
   if (audio) await audio.stop()
   audio = null
@@ -562,12 +660,17 @@ for (const name of Object.keys(DEFAULT_SETTINGS)) {
     syncControls()
   })
 }
-for (const name of ['tonic', 'mode', 'octave', 'sound', 'noteMode', 'delayDivision', 'bpm', 'reverbMix', 'delayMix', 'reverbOn', 'delayOn']) {
+for (const name of ['tonic', 'mode', 'octave', 'sound', 'delayDivision', 'bpm', 'reverbMix', 'delayMix', 'reverbOn', 'delayOn']) {
   const input = $(name)
   input.addEventListener(input.type === 'range' ? 'input' : 'change', () => {
     const value = input.type === 'checkbox' ? input.checked : input.type === 'range' || name === 'octave' ? Number(input.value) : input.value
     if (name === 'bpm') tempoTaps = []
     updateMusic(name, value)
+  })
+}
+for (const input of document.querySelectorAll('input[name="noteMode"]')) {
+  input.addEventListener('change', () => {
+    if (input.checked) updateMusic('noteMode', input.value)
   })
 }
 for (const name of ['attack', 'decay', 'sustain', 'release']) {
@@ -617,8 +720,13 @@ $('camera-facing').addEventListener('change', (event) => {
   if (cameraBusy) { event.target.value = cameraFacing; return }
   switchCamera(event.target.value)
 })
-$('settings-toggle').addEventListener('click', () => setPanel($('settings-panel').hidden))
+$('settings-toggle').addEventListener('click', () => setPanel(!settingsNavigation.open))
 $('settings-close').addEventListener('click', () => setPanel(false))
+$('settings-backdrop').addEventListener('click', () => setPanel(false))
+$('settings-back').addEventListener('click', backSettings)
+for (const button of document.querySelectorAll('[data-open-settings]')) {
+  button.addEventListener('click', () => openSettingsPage(button.dataset.openSettings))
+}
 $('show-percentages').checked = showPercentages
 $('show-percentages').addEventListener('change', (event) => {
   showPercentages = event.target.checked
@@ -653,8 +761,8 @@ $('reset').addEventListener('click', async () => {
   syncMusicControls()
   audio?.setSettings(musicSettings)
   $('tap-hint').textContent = 'Tap at least twice to set BPM.'
-  $('settings-status').textContent = 'Default settings restored.'
   if (cameraFacing !== 'user') await switchCamera('user')
+  $('settings-status').textContent = 'Default settings restored.'
 })
 $('recommended-sensitivity').addEventListener('click', () => {
   settings = normalizeSettings({ ...settings, pressThreshold: DEFAULT_SETTINGS.pressThreshold })
@@ -662,8 +770,14 @@ $('recommended-sensitivity').addEventListener('click', () => {
   syncControls()
   $('settings-status').textContent = 'Step sensitivity set to 30%.'
 })
-$('calibrate').addEventListener('click', () => {
-  if (!video) { $('settings-status').textContent = 'Start the camera before calibrating.'; return }
+function startManualCalibration() {
+  if (calibration) return
+  if (!video || cameraBusy) {
+    $('settings-status').textContent = cameraBusy ? 'Wait for the camera to finish switching.' : 'Start the camera before calibrating.'
+    return
+  }
+  window.clearTimeout(calibrationFeedbackTimer)
+  calibrationFeedbackTimer = null
   audio?.allNotesOff()
   const now = performance.now()
   background = null
@@ -674,6 +788,9 @@ $('calibrate').addEventListener('click', () => {
     if (!endCalibration()) return
     referenceReadyAt = Infinity
     $('settings-status').textContent = 'No camera frame was available. Try recalibrating.'
+    $('quick-calibrate').textContent = 'Retry calibration'
+    $('quick-calibrate').dataset.state = 'error'
+    syncQuickCalibrateAvailability()
   }, REFERENCE_POLICY.manualCaptureTimeoutMs)
   calibration.progressTimer = window.setInterval(() => {
     $('calibration-progress').value = Math.min(REFERENCE_POLICY.manualCaptureDelayMs, performance.now() - now)
@@ -681,15 +798,23 @@ $('calibrate').addEventListener('click', () => {
   measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: 0 }))
   $('calibrate').disabled = true
   $('calibrate').textContent = 'Calibrating…'
+  $('quick-calibrate').disabled = true
+  $('quick-calibrate').textContent = 'Clear strip…'
+  $('quick-calibrate').dataset.state = 'running'
   $('calibration-progress').value = 0
   $('calibration-progress').hidden = false
   $('settings-status').textContent = 'Hold the strip clear while capturing a new floor reference. Step sensitivity will stay the same.'
   render()
-})
+}
+$('calibrate').addEventListener('click', startManualCalibration)
+$('quick-calibrate').addEventListener('click', startManualCalibration)
+$('mute-toggle').addEventListener('click', () => setMuted(!muted))
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !$('settings-panel').hidden) setPanel(false)
-  if (event.key.toLowerCase() === 'd' && !event.repeat && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
-    setPanel($('settings-panel').hidden)
+  keepSettingsFocus(event)
+  if (event.key === 'Escape' && settingsNavigation.open) setPanel(false)
+  if (event.key.toLowerCase() === 'd' && !event.repeat && !event.altKey && !event.ctrlKey && !event.metaKey
+      && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
+    setPanel(!settingsNavigation.open)
   }
 })
 window.addEventListener('resize', resize)

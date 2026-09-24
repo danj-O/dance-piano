@@ -160,11 +160,13 @@ See [PHASE_3_RESULTS.md](PHASE_3_RESULTS.md) for the voice lifecycle, defaults, 
 
 ---
 
-# Phase 4 — Settings and UI Redesign
+# Phase 4 — Settings and UI Redesign (implemented)
 
 ## Goal
 
 Reorganize global settings, separate them from module-specific configuration, and prepare reusable module-inspector patterns.
+
+See [PHASE_4_RESULTS.md](PHASE_4_RESULTS.md) for the sectioned Settings navigation, control mapping, unchanged persistence boundary, and browser checks.
 
 ---
 

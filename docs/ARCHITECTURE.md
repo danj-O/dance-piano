@@ -8,6 +8,18 @@ It describes the target direction. The current implementation may not yet match 
 
 ---
 
+## Current Implementation (performance controls)
+
+The performance toolbar exposes the same manual empty-floor calibration action used in Detection Settings. Both buttons call one calibration lifecycle in `src/app.js`; the detector's capture and adaptation rules are unchanged. A session-only Mute toggle controls a master gain after the compressor in `src/audio.js`, silencing dry notes and the reverb/delay returns together while voice and camera state continue running. The toggle is not part of saved music or layout configuration.
+
+---
+
+## Current Implementation (Phase 4 Settings UI)
+
+Settings is one overlay with transient root/category navigation in `src/settings-navigation.js`. `src/app.js` binds the four pages—Instrument, Effects, Camera & Display, and Detection—to the existing setting handlers and localStorage keys. Instrument groups the current keyboard's note mapping, sound, one-shot/gate mode, and ADSR controls; this is a UI boundary for future module editing, not module persistence. Effects, camera/display, and detection controls remain app-level. The detector and audio runtime paths described below are unchanged. See [PHASE_4_RESULTS.md](PHASE_4_RESULTS.md).
+
+---
+
 ## Current Implementation (Phase 3 audio interaction)
 
 Generated keyboard zones now carry note actions with an explicit `oneShot` or `gate` mode, sound choice, and optional ADSR override. `src/actions.js` interprets the unchanged detector `trigger`/`release` events. `src/audio.js` owns finite one-shot voices, gated noteOn/noteOff voices, envelope automation, and cleanup. A gated voice is owned by its zone ID, so duplicate pitches from different zones remain independent. The existing default keyboard remains one-shot. See [PHASE_3_RESULTS.md](PHASE_3_RESULTS.md).
