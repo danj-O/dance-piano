@@ -49,7 +49,7 @@ test('entry triggers once, a held foot stays occupied, and exit releases then re
   assert.deepEqual(tracker.update(present, 0, settings), [event('trigger', 4)])
   for (const time of [100, 350, 600]) {
     assert.deepEqual(tracker.update(measureZones(foot, reference, 32, 16, zones, settings), time, settings), [])
-    adaptBackground(reference, foot, 32, 16, zones, present, settings)
+    adaptBackground(reference, foot, 32, 16, zones, new Map())
   }
   assert.equal(reference[(12 * 32 + 8) * 4], 0, 'held foot must not become the background')
   const empty = measureZones(floor, reference, 32, 16, zones, settings)
@@ -65,7 +65,7 @@ test('empty floor reference follows gradual brightness changes', () => {
   brighter[(12 * 32 + 8) * 4] = 20
   const measurements = measureZones(brighter, reference, 32, 16, zones, settings)
   assert.equal(measurements[4].ratio, 0)
-  adaptBackground(reference, brighter, 32, 16, zones, measurements, settings, 0.5)
+  adaptBackground(reference, brighter, 32, 16, zones, new Map([[zones[4].id, 0.5]]))
   assert.equal(reference[(12 * 32 + 8) * 4], 10)
 })
 
@@ -93,6 +93,9 @@ test('settings and calibration handle stale or noisy saved values', () => {
   assert.equal(value.zoneHeight, 0.005)
   assert.equal(value.pixelStep, 3)
   assert.equal(value.pressThreshold, 0.16)
+  assert.equal(value.adaptationCeiling, 0.12)
+  assert.equal(normalizeSettings({ adaptationCeiling: 0.05 }).adaptationCeiling, 0.05)
+  assert.equal(normalizeSettings({ adaptationCeiling: 999 }).adaptationCeiling, 0.45)
   assert.equal(calibrationThreshold([0, 0.01, 0.02, 0.03, 1]), 0.13)
   assert.equal(calibrationThreshold([]), null)
 })

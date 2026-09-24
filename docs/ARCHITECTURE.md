@@ -8,6 +8,18 @@ It describes the target direction. The current implementation may not yet match 
 
 ---
 
+## Current Implementation (Phase 2B local adaptation)
+
+`src/local-adaptation.js` now decides independently for each zone whether recent telemetry supports guarded, gradual baseline blending. It keeps candidate dwell, new-peak, and post-interaction timing separately from the unchanged trigger state machine. `src/detector.js` applies only approved per-zone blend coefficients to the shared full-frame baseline. The camera overlay shows candidate, recovery, and completion progress; the optional debug panel exposes per-zone state and timing. Manual calibration and the existing note path remain in place. See [PHASE_2B_RESULTS.md](PHASE_2B_RESULTS.md) for parameters and limitations.
+
+---
+
+## Current Implementation (Phase 2A telemetry foundation)
+
+Each `ZoneTracker` now also owns bounded, elapsed-time telemetry for every zone ID. The tracker records raw activity, trigger/release timestamps, continuous inactive time, a recent activity window, and summary statistics. Its existing event decisions are unchanged. A temporary debug panel in the app exposes these observations without persisting them or feeding them into calibration or background adaptation. See [PHASE_2A_RESULTS.md](PHASE_2A_RESULTS.md).
+
+---
+
 ## Current Implementation (Phase 1 module foundation)
 
 The default instrument is now a versioned, in-memory layout with one keyboard module. `src/layout.js` derives its normalized strip geometry from the existing `zoneHeight` and `zonePosition` settings, then deterministically generates sixteen camera-coordinate zones with stable IDs and note actions. Generated zones are runtime data, not saved layout data. The existing four localStorage keys and their formats remain unchanged.

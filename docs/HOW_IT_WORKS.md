@@ -20,7 +20,7 @@ For sampled pixels in each key zone, frame analysis sums absolute RGB difference
 
 `ZoneTracker` has an armed state for each zone ID. It emits a trigger when a zone's occupied ratio crosses `pressThreshold`, the cooldown has elapsed, and fewer than half of all zones cross the threshold at once. Broad changes are suppressed because they are often camera shake or a lighting change. Two processed frames below 35% of the press threshold rearm the zone and emit a release event. The release does not play a note. `src/actions.js` maps triggers to the generated note actions; the cooldown is an additional guard against quick retriggers.
 
-The floor reference slowly follows brightness changes only in zones that look empty. Occupied zones are never folded into the reference, even when the foot stays still. A large lighting shift or moved camera can still invalidate the reference; recalibrate with the strip empty in that case.
+The floor reference slowly follows sustained activity after a guarded four-second dwell. Readings may fluctuate within a band; they do not need to hold one exact percentage. Brief zero readings do not restart that dwell. An amber bar across a key fills during the wait, a cyan bar shows baseline recovery, and a white flash marks completion. Settings has a **Max self-calibration activity** control; the effective limit is also capped below step sensitivity. If drift peaks above that limit, raise Step sensitivity and then the activity limit, or manually calibrate with an empty strip. Triggered or occupied zones are never folded into the reference, even when the foot stays still. A large lighting shift or moved camera can still invalidate the reference; recalibrate with the strip empty in that case.
 
 ## Sound
 

@@ -1,9 +1,12 @@
+import { ZoneTelemetry } from './telemetry.js?v=local-adaptation'
+
 export const FRAME_WIDTH = 320
 export const FRAME_HEIGHT = 240
 
 export const DEFAULT_SETTINGS = Object.freeze({
   pixelThreshold: 50,
   pressThreshold: 0.16,
+  adaptationCeiling: 0.12,
   cooldownMs: 300,
   zoneHeight: 0.005,
   zonePosition: 0.94,
@@ -13,6 +16,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
 const LIMITS = {
   pixelThreshold: [10, 150],
   pressThreshold: [0.04, 0.6],
+  adaptationCeiling: [0.02, 0.45],
   cooldownMs: [100, 800],
   zoneHeight: [0.005, 0.45],
   zonePosition: [0, 1],
@@ -67,16 +71,16 @@ export function measureZones(current, background, width, height, zones, settings
   })
 }
 
-// Preserve the existing low-activity, per-frame update of the shared reference.
-export function adaptBackground(background, current, width, height, zones, measurements, settings, alpha = 0.02) {
-  if (current.length !== width * height * 4 || background.length !== current.length || measurements.length !== zones.length) {
-    throw new RangeError("Background, frame, or zone count does not match")
+// Blend only zones approved by the local temporal adaptation controller.
+// The full-frame Float32Array remains shared across nonoverlapping zones.
+export function adaptBackground(background, current, width, height, zones, alphaByZone) {
+  if (current.length !== width * height * 4 || background.length !== current.length) {
+    throw new RangeError("Background and frame dimensions do not match")
   }
-  const emptyThreshold = settings.pressThreshold * 0.35
-  for (let index = 0; index < zones.length; index++) {
-    if (measurements[index].zoneId !== zones[index].id) throw new RangeError('Measurements do not match zones')
-    if (measurements[index].ratio >= emptyThreshold) continue
-    const { x1, x2, y1, y2 } = zonePixelBounds(zones[index].geometry, width, height)
+  for (const zone of zones) {
+    const alpha = alphaByZone.get(zone.id) ?? 0
+    if (alpha <= 0) continue
+    const { x1, x2, y1, y2 } = zonePixelBounds(zone.geometry, width, height)
     for (let y = y1; y < y2; y++) {
       for (let x = x1; x < x2; x++) {
         const p = (y * width + x) * 4
@@ -92,6 +96,13 @@ export class ZoneTracker {
   constructor(zones) {
     this.states = new Map(zones.map((zone) => [zone.id, { armed: true, quietFrames: 0, lastNote: -Infinity }]))
     if (this.states.size !== zones.length) throw new RangeError('Zone IDs must be unique')
+    this.telemetry = new Map(zones.map((zone) => [zone.id, new ZoneTelemetry()]))
+  }
+
+  snapshot(zoneId, now) {
+    const telemetry = this.telemetry.get(zoneId)
+    if (!telemetry) throw new RangeError(`Unknown zone: ${zoneId}`)
+    return telemetry.snapshot(now)
   }
 
   update(measurements, now, settings) {
@@ -103,6 +114,7 @@ export class ZoneTracker {
     for (const { zoneId, ratio } of measurements) {
       const state = this.states.get(zoneId)
       if (!state) throw new RangeError(`Unknown zone: ${zoneId}`)
+      let eventType = null
       if (state.armed) {
         if (ratio >= settings.pressThreshold) {
           state.armed = false
@@ -110,6 +122,7 @@ export class ZoneTracker {
           if (!broadChange && now - state.lastNote >= settings.cooldownMs) {
             state.lastNote = now
             events.push({ type: 'trigger', zoneId })
+            eventType = 'trigger'
           }
         }
       } else {
@@ -118,8 +131,10 @@ export class ZoneTracker {
           state.armed = true
           state.quietFrames = 0
           events.push({ type: 'release', zoneId })
+          eventType = 'release'
         }
       }
+      this.telemetry.get(zoneId).record(ratio, now, !state.armed, eventType, settings.pressThreshold)
     }
     return events
   }

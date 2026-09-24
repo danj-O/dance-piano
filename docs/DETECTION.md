@@ -10,6 +10,24 @@ Calibration must operate at the generic zone level so every future module benefi
 
 ---
 
+## Current Implementation (Phase 2B local adaptation)
+
+The app still compares each zone with one shared full-frame `Float32Array` baseline. After the unchanged `ZoneTracker` processes a frame, `LocalAdaptation` uses its Phase 2A telemetry to decide which zones may blend their baseline pixels toward that frame. It is now the sole owner of adaptation state; the former observational placeholder in `ZoneTelemetry` has been removed. `adaptBackground` only applies the approved per-zone blend amounts; the old instantaneous `0.35 × pressThreshold` eligibility cutoff has been removed from background updates. Trigger/release thresholds and two-frame rearm are unchanged.
+
+The controller distinguishes `normal`, `settling`, `candidate`, `adapting`, `recovering`, `complete`, `occupied`, `grace`, and `unstable`. Recent readings may fluctuate within an activity band rather than staying at one percentage. The tolerated range grows with the effective activity ceiling, up to 20 percentage points; a new peak well outside the recent band still interrupts candidacy. At least 65% of recent observations must be above normal noise, so intermittent zero/high flicker does not qualify. After 1.5 seconds of sampled history, a qualified zone completes a separate four-second candidate dwell. Brief zero readings within a drift band do not restart that dwell, but sustained normal readings do. A zone that is disarmed, recently triggered or released, above the upper activity ceiling, or showing a sharp new peak cannot adapt. Settings lets the user set the maximum self-calibration activity from 2–45%; the effective ceiling also remains at or below 75% of the press threshold. The shared baseline is blended gradually only on eligible frames above normal noise; each frame rechecks eligibility. Manual calibration and camera-switch capture still take fresh references and reset local adaptation state. Amber and cyan bars over each key show candidate dwell and baseline recovery, followed by a white completion flash. The debug panel also shows state and timing.
+
+Initial constants and their rationale are recorded in [PHASE_2B_RESULTS.md](PHASE_2B_RESULTS.md) and defined in `src/local-adaptation.js`. A stable low reading is only a guarded candidate, never proof of background; a small stationary object or shadow can still resemble drift. Global idle auto-calibration remains a separate future phase.
+
+---
+
+## Current Implementation (Phase 2A telemetry foundation)
+
+`ZoneTracker` records per-zone raw ratios and event timestamps on each processed detection frame. It keeps up to ten seconds of approximately 100 ms spaced samples, capped at 120 samples per zone. Snapshots expose elapsed idle/trigger/release times, recent mean, range, standard deviation, largest sampled rise, and the latest frame-to-frame ratio change. Inactive time starts only when the zone is armed and below the existing press threshold; active means disarmed, including when an entry was suppressed by cooldown or the broad-change guard. `blocked-active` and `unassessed` are observational adaptation labels, not a decision to update the baseline.
+
+The existing shared baseline update still uses only the raw ratio and `0.35 × pressThreshold` cutoff. No telemetry is consulted by detection, triggering, calibration, or adaptation. A ten-point default signal step makes a stable 10% reading appear flat while 0/10% flicker has a ten-point range. The debug panel reports these raw statistics instead of declaring either pattern to be safe drift. See [PHASE_2A_RESULTS.md](PHASE_2A_RESULTS.md) for experiments to guide Phase 2B.
+
+---
+
 ## Current Implementation (Phase 1 update)
 
 `measureZones` now receives generated normalized zone geometry and returns `{zoneId, ratio}` readings. `ZoneTracker` emits ID-based `trigger` and `release` events. The pixel comparison, sampling, two-frame rearm, cooldown, half-of-zones broad-change guard, global threshold estimate, shared full-frame `Float32Array` baseline, and per-region 2% low-activity baseline update are unchanged. No idle calibration, independent zone baseline, drift history, or post-trigger adaptation grace period has been added.

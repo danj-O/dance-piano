@@ -1,11 +1,12 @@
 import {
   FRAME_HEIGHT, FRAME_WIDTH, DEFAULT_SETTINGS,
   ZoneTracker, adaptBackground, measureZones, calibrationThreshold, normalizeSettings,
-} from './detector.js?v=module-foundation'
+} from './detector.js?v=drift-band-bars'
 import { DanceAudio } from './audio.js?v=mobile-compat'
 import { DEFAULT_MUSIC, addTempoTap, normalizeMusicSettings } from './music.js?v=mobile-compat'
 import { createDefaultLayout, generateZones } from './layout.js?v=module-foundation'
 import { dispatchZoneEvent } from './actions.js?v=module-foundation'
+import { LocalAdaptation, effectiveAdaptationCeiling } from './local-adaptation.js?v=fast-recovery'
 
 const STORAGE_KEY = 'dance-keys-settings-v2'
 const PERCENTAGES_KEY = 'dance-keys-show-percentages'
@@ -34,6 +35,7 @@ let video = null
 let background = null
 let referenceReadyAt = 0
 let tracker = new ZoneTracker(zones)
+let adaptation = new LocalAdaptation(zones)
 let measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: 0 }))
 let flashes = new Map(zones.map((zone) => [zone.id, 0]))
 let frameRequest = null
@@ -41,6 +43,66 @@ let frameTimer = null
 let runId = 0
 let calibration = null
 let cameraBusy = false
+let showTelemetry = false
+let telemetryRows = new Map()
+let lastTelemetryPaint = -Infinity
+
+function rebuildTelemetryRows() {
+  const container = $('telemetry-rows')
+  container.replaceChildren()
+  telemetryRows = new Map()
+  for (const [index, zone] of zones.entries()) {
+    const row = document.createElement('div')
+    row.className = 'telemetry-row'
+    const fields = Array.from({ length: 7 }, () => document.createElement('span'))
+    fields[5].className = 'details'
+    fields[6].className = 'trace'
+    fields[0].textContent = `K${index} ${zone.action?.note ?? ''}`
+    row.append(...fields)
+    container.append(row)
+    telemetryRows.set(zone.id, { row, fields })
+  }
+  lastTelemetryPaint = -Infinity
+}
+
+function seconds(ms) {
+  return ms == null ? '—' : `${(ms / 1000).toFixed(1)}s`
+}
+
+function adaptationLabel(data) {
+  switch (data.state) {
+    case 'candidate': return `DRIFT ${seconds(data.candidateMs)}/${seconds(data.candidateDwellMs)}`
+    case 'adapting': return data.blending ? `ADAPTING ${seconds(data.adaptingMs)}` : 'PAUSED LOW'
+    case 'recovering': return 'FINISHING'
+    case 'complete': return 'RECALIBRATED'
+    case 'grace': return `FROZEN ${seconds(data.graceMs)}`
+    case 'occupied': return 'OCCUPIED'
+    case 'unstable': return 'UNSTABLE'
+    case 'settling': return 'SETTLING'
+    default: return 'NORMAL'
+  }
+}
+
+function renderTelemetry(now = performance.now()) {
+  if (!showTelemetry || now - lastTelemetryPaint < 250) return
+  lastTelemetryPaint = now
+  const symbols = '▁▂▃▄▅▆▇█'
+  for (const [index, zone] of zones.entries()) {
+    const { row, fields } = telemetryRows.get(zone.id)
+    const data = tracker.snapshot(zone.id, now)
+    const local = adaptation.snapshot(zone.id, now)
+    const raw = calibration ? measurements[index].ratio : data.rawRatio
+    fields[1].textContent = background ? `${Math.round(raw * 100)}%` : '—'
+    fields[2].textContent = calibration ? 'CAL' : data.triggerState === 'active' ? 'ACTIVE' : 'armed'
+    fields[3].textContent = calibration ? 'CAL' : background ? adaptationLabel(local) : 'WAIT REF'
+    fields[4].textContent = `R${Math.round(local.recentRange * 100)}%`
+    fields[5].textContent = `idle ${seconds(data.inactiveMs)}   T ${seconds(data.sinceTriggerMs)}   R ${seconds(data.sinceReleaseMs)}`
+    fields[6].textContent = data.history.slice(-28).map(({ ratio }) => symbols[Math.min(7, Math.floor(ratio * 10))]).join('')
+    row.dataset.state = local.state
+    row.dataset.trigger = data.triggerState
+    row.title = `${zone.id}: recent mean ${Math.round(data.recent.mean * 100)}%, standard deviation ${(data.recent.standardDeviation * 100).toFixed(1)}%, largest sampled rise ${Math.round(data.recent.largestRise * 100)}%`
+  }
+}
 
 function rebuildZones(resetTracker = false) {
   layout = createDefaultLayout(settings, musicSettings)
@@ -49,7 +111,11 @@ function rebuildZones(resetTracker = false) {
   const previous = new Map(measurements.map(({ zoneId, ratio }) => [zoneId, ratio]))
   measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: previous.get(zone.id) ?? 0 }))
   flashes = new Map(zones.map((zone) => [zone.id, flashes.get(zone.id) ?? 0]))
-  if (resetTracker) tracker = new ZoneTracker(zones)
+  if (resetTracker) {
+    tracker = new ZoneTracker(zones)
+    adaptation = new LocalAdaptation(zones)
+  }
+  if (showTelemetry) rebuildTelemetryRows()
 }
 
 function loadSettings() {
@@ -96,7 +162,7 @@ function saveSettings() {
 
 function formatSetting(name, value) {
   if (name === 'zoneHeight') return `${Number((value * 100).toFixed(1))}%`
-  if (name === 'pressThreshold' || name === 'zonePosition') return `${Math.round(value * 100)}%`
+  if (name === 'pressThreshold' || name === 'adaptationCeiling' || name === 'zonePosition') return `${Math.round(value * 100)}%`
   if (name === 'cooldownMs') return `${value} ms`
   return String(value)
 }
@@ -106,6 +172,11 @@ function syncControls() {
     $(name).value = value
     $(`${name}-value`).textContent = formatSetting(name, value)
   }
+  const effectiveLimit = effectiveAdaptationCeiling(settings)
+  const ceilingHelp = settings.adaptationCeiling > effectiveLimit + 0.001
+    ? 'Step sensitivity caps this limit. Raise Step sensitivity above the drift peaks to permit a higher limit.'
+    : 'Set this above the drift peaks. Triggered keys cannot self-calibrate.'
+  $('adaptationCeiling-effective').textContent = `Effective limit: ${Number((effectiveLimit * 100).toFixed(1))}%. ${ceilingHelp}`
   render()
 }
 
@@ -209,11 +280,30 @@ function render() {
       context.fillText(`${Math.round(ratio * 100)}%`, x + keyWidth / 2, percentageY)
     }
     context.shadowBlur = 0
+    const local = !calibration && background ? adaptation.snapshot(zone.id, now) : null
+    if (!active && local && ['candidate', 'adapting', 'recovering', 'complete'].includes(local.state)) {
+      const barX = x + 2
+      const barWidth = Math.max(0, keyWidth - 4)
+      const barHeight = Math.max(4, Math.min(7, h * 0.35))
+      const barY = h >= 12 ? y + h - barHeight - 1 : y >= 9 ? y - barHeight - 3 : y + h + 3
+      const candidate = local.state === 'candidate'
+      const complete = local.state === 'complete'
+      const progress = candidate ? Math.min(1, local.candidateMs / local.candidateDwellMs)
+        : complete ? 1 : Math.max(0.06, local.recoveryProgress)
+      context.fillStyle = '#10131bcc'
+      context.fillRect(barX, barY, barWidth, barHeight)
+      context.fillStyle = candidate ? '#ffb84d' : complete ? '#f4fbff' : '#4bd4ff'
+      if (complete) context.globalAlpha = Math.max(0, 1 - local.completeMs / local.completionFlashMs)
+      context.fillRect(barX, barY, barWidth * progress, barHeight)
+      context.globalAlpha = 1
+    }
   }
   if (!$('settings-panel').hidden) {
     context.strokeStyle = '#ffcf6c'
-    context.lineWidth = 3
-    context.strokeRect(r.x + strip.x * r.w + 1.5, y + 1.5, strip.width * r.w - 3, Math.max(1, h - 3))
+    context.lineWidth = 2
+    // Keep the settings outline outside the playable strip, including when
+    // the strip is thinner than the outline itself.
+    context.strokeRect(r.x + strip.x * r.w - 2, y - 2, strip.width * r.w + 4, h + 4)
     context.lineWidth = 1
   }
 }
@@ -232,16 +322,19 @@ function processFrame(id) {
         for (const event of tracker.update(measurements, now, settings)) {
           if (dispatchZoneEvent(event, zonesById, audio)) flashes.set(event.zoneId, now)
         }
-        adaptBackground(background, current, FRAME_WIDTH, FRAME_HEIGHT, zones, measurements, settings)
+        const alphaByZone = adaptation.update(measurements, tracker, now, settings)
+        adaptBackground(background, current, FRAME_WIDTH, FRAME_HEIGHT, zones, alphaByZone)
       }
     } else if (performance.now() >= referenceReadyAt) {
       background = new Float32Array(current)
       measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: 0 }))
       tracker = new ZoneTracker(zones)
+      adaptation = new LocalAdaptation(zones)
       $('welcome').hidden = true
       $('stop').hidden = false
     }
     render()
+    renderTelemetry()
     scheduleFrame(id)
   } catch (error) {
     stop(cameraError(error))
@@ -283,6 +376,7 @@ function finishCalibration() {
   syncControls()
   $('settings-status').textContent = `Calibrated. Step sensitivity set to ${formatSetting('pressThreshold', value)}.`
   tracker = new ZoneTracker(zones)
+  adaptation = new LocalAdaptation(zones)
 }
 
 function cameraError(error) {
@@ -325,7 +419,9 @@ function releaseCamera() {
   measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: 0 }))
   flashes = new Map(zones.map((zone) => [zone.id, 0]))
   tracker = new ZoneTracker(zones)
+  adaptation = new LocalAdaptation(zones)
   render()
+  renderTelemetry()
 }
 
 async function openCamera(mode, id, exact = false) {
@@ -433,7 +529,10 @@ for (const name of Object.keys(DEFAULT_SETTINGS)) {
     settings = normalizeSettings({ ...settings, [name]: Number(event.target.value) })
     saveSettings()
     if (name === 'zoneHeight' || name === 'zonePosition') rebuildZones(true)
-    if (name === 'pixelStep') tracker = new ZoneTracker(zones)
+    if (name === 'pixelStep') {
+      tracker = new ZoneTracker(zones)
+      adaptation = new LocalAdaptation(zones)
+    }
     syncControls()
   })
 }
@@ -492,6 +591,19 @@ $('show-percentages').addEventListener('change', (event) => {
   showPercentages = event.target.checked
   saveShowPercentages()
   render()
+})
+$('show-telemetry').addEventListener('change', (event) => {
+  showTelemetry = event.target.checked
+  $('telemetry-panel').hidden = !showTelemetry
+  if (showTelemetry) {
+    rebuildTelemetryRows()
+    renderTelemetry()
+  }
+})
+$('telemetry-close').addEventListener('click', () => {
+  showTelemetry = false
+  $('show-telemetry').checked = false
+  $('telemetry-panel').hidden = true
 })
 $('reset').addEventListener('click', async () => {
   if (cameraBusy) return

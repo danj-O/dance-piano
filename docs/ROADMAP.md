@@ -97,46 +97,72 @@ Do not redesign adaptive calibration yet.
 
 ---
 
-# Phase 2 — Adaptive Detection and Calibration
+# Phase 2A — Detection Telemetry (completed)
 
 ## Goal
 
-Reduce manual calibration and make individual zones resilient to environmental drift.
+Observe raw per-zone activity, elapsed trigger/release and idle timing, and recent stability before choosing adaptation rules.
 
-## Work
-
-- establish independent per-zone runtime detection state
-- identify scene/zone stability
-- detect persistent low-level drift
-- gradually adapt eligible zone baselines
-- freeze adaptation during plausible occupancy
-- add post-trigger adaptation grace period
-- support stronger auto-calibration after global idle + stable conditions
-- retain manual calibration
-- centralize tuning parameters
-- add useful debug instrumentation
-- add tests where practical
-
-## Restrictions
-
-Do not build Customize Mode.
-
-Do not add advanced musical actions.
-
-Avoid aggressive calibration heuristics.
-
-## Exit Criteria
-
-- small stable environmental changes can recover without manual calibration
-- one drifting zone can recover without forcing unrelated zones to recalibrate
-- active/occupied zones are not learned as background under expected use
-- global idle can safely refresh calibration
-- manual calibration still works
-- behavior is observable/debuggable enough to tune
+See [PHASE_2A_RESULTS.md](PHASE_2A_RESULTS.md). This phase added bounded runtime telemetry and an opt-in debug panel without changing baseline behavior.
 
 ---
 
-# Phase 3 — Generic Trigger Modules
+# Phase 2B — Local Adaptive Calibration (current)
+
+## Goal
+
+Let individual zones recover from persistent, low-level environmental drift while protecting occupied zones and recent interactions.
+
+## Work
+
+- use temporal zone telemetry to identify stable, low-activity candidates
+- require elapsed candidate dwell and post-interaction grace
+- stop adaptation on high occupancy or rapid activity changes
+- blend only eligible zone pixels in the shared baseline
+- show candidate, frozen, and adapting states in debug mode
+- retain manual calibration and existing trigger/audio behavior
+
+See [PHASE_2B_RESULTS.md](PHASE_2B_RESULTS.md) for the implementation and real-camera checks.
+
+## Restrictions
+
+Do not add global idle auto-calibration or layout editing.
+
+---
+
+# Phase 2C — Global Idle Auto-Calibration
+
+## Goal
+
+Allow a stronger shared-reference refresh only when the entire scene is demonstrably idle and stable. Keep eligibility distinct from local zone adaptation and preserve the manual fallback.
+
+---
+
+# Phase 2D — Real-World Detection Tuning
+
+## Goal
+
+Use camera experiments to tune sampling, thresholds, timing, drift guards, and debug feedback without expanding the instrument model.
+
+---
+
+# Phase 3 — Audio Interaction Model
+
+## Goal
+
+Support explicit `noteOn`/`noteOff` interaction, sustained or gated notes, and ADSR while preserving the current one-shot trigger behavior.
+
+---
+
+# Phase 4 — Settings and UI Redesign
+
+## Goal
+
+Reorganize global settings, separate them from module-specific configuration, and prepare reusable module-inspector patterns.
+
+---
+
+# Phase 5 — Generic Trigger Modules
 
 ## Goal
 
@@ -170,7 +196,7 @@ Do not build the visual editor yet.
 
 ---
 
-# Phase 4 — Customize Mode MVP
+# Phase 6 — Customize Mode MVP
 
 ## Goal
 
@@ -209,7 +235,7 @@ and then immediately perform with that layout.
 
 ---
 
-# Phase 5 — Layout Management and Editor Polish
+# Phase 7 — Layout Management and Editor Polish
 
 Potential work:
 
@@ -230,7 +256,7 @@ Finalize scope before implementation.
 
 ---
 
-# Phase 6 — Advanced Modules and Actions
+# Phase 8 — Advanced Modules and Actions
 
 Candidates:
 

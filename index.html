@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#10131b" />
     <title>Dance Keys</title>
-    <link rel="stylesheet" href="styles.css?v=effect-amounts" />
-    <script type="module" src="src/app.js?v=module-foundation"></script>
+    <link rel="stylesheet" href="styles.css?v=local-adaptation" />
+    <script type="module" src="src/app.js?v=fast-recovery"></script>
   </head>
   <body>
     <canvas id="stage" aria-label="Mirrored camera view with sixteen playable key zones"></canvas>
@@ -44,6 +44,10 @@
       <label class="display-toggle" for="show-percentages">
         <span><strong>Show key percentages</strong><small>Keep the live occupancy numbers visible while playing.</small></span>
         <input id="show-percentages" type="checkbox" />
+      </label>
+      <label class="display-toggle" for="show-telemetry">
+        <span><strong>Show detector telemetry</strong><small>Temporary debug view of activity, state, and timing. This choice is not saved.</small></span>
+        <input id="show-telemetry" type="checkbox" />
       </label>
       <h3 class="section-heading">Music</h3>
       <div class="select-grid">
@@ -134,6 +138,11 @@
         <small>Fraction of sampled pixels that must differ from the empty floor. Lower catches lighter steps.</small>
       </div>
       <div class="control">
+        <label for="adaptationCeiling">Max self-calibration activity <output id="adaptationCeiling-value"></output></label>
+        <input id="adaptationCeiling" type="range" min="0.02" max="0.45" step="0.01" />
+        <small id="adaptationCeiling-effective">Only sustained activity below this level can recalibrate. The effective limit stays below step sensitivity.</small>
+      </div>
+      <div class="control">
         <label for="cooldownMs">Cooldown <output id="cooldownMs-value"></output></label>
         <input id="cooldownMs" type="range" min="100" max="800" step="25" />
         <small>Minimum time between notes on the same key.</small>
@@ -157,6 +166,11 @@
         <button id="reset" type="button">Reset defaults</button>
       </div>
       <p class="settings-tip">Green means a note just played; yellow means the key remains occupied. During calibration, percentages appear automatically; afterward this switch controls them. Press <kbd>D</kbd> to toggle this panel.</p>
+    </aside>
+    <aside id="telemetry-panel" class="telemetry-panel" aria-label="Detector telemetry" hidden>
+      <div class="telemetry-heading"><strong>Detector telemetry</strong><button id="telemetry-close" type="button" aria-label="Hide detector telemetry">×</button></div>
+      <p>K numbers follow camera order; screen order is mirrored. R is the recent 2-second range. Amber bars show the drift wait; cyan bars show baseline recovery; a white flash marks completion.</p>
+      <div id="telemetry-rows" class="telemetry-rows"></div>
     </aside>
   </body>
 </html>
