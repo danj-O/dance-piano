@@ -8,6 +8,12 @@ It describes the target direction. The current implementation may not yet match 
 
 ---
 
+## Current Implementation (Phase 2C global idle calibration)
+
+`src/global-idle-calibration.js` adds a whole-scene policy above the existing local controller. It observes zone measurements and tracker telemetry, waits for broad stable low activity with no occupancy or recent interaction, then approves a short coordinated blend through the same shared-baseline primitive. `src/app.js` arbitrates baseline writes and resets temporal state at handoff. This global runtime state is not persisted and does not change the layout, trigger events, or action path. See [PHASE_2C_RESULTS.md](PHASE_2C_RESULTS.md).
+
+---
+
 ## Current Implementation (Phase 2B local adaptation)
 
 `src/local-adaptation.js` now decides independently for each zone whether recent telemetry supports guarded, gradual baseline blending. It keeps candidate dwell, new-peak, and post-interaction timing separately from the unchanged trigger state machine. `src/detector.js` applies only approved per-zone blend coefficients to the shared full-frame baseline. The camera overlay shows candidate, recovery, and completion progress; the optional debug panel exposes per-zone state and timing. Manual calibration refreshes the frame reference and leaves the saved Step sensitivity unchanged. The existing note path remains in place. See [PHASE_2B_RESULTS.md](PHASE_2B_RESULTS.md) for parameters and limitations.

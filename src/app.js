@@ -7,6 +7,7 @@ import { DEFAULT_MUSIC, addTempoTap, normalizeMusicSettings } from './music.js?v
 import { createDefaultLayout, generateZones } from './layout.js?v=module-foundation'
 import { dispatchZoneEvent } from './actions.js?v=module-foundation'
 import { LocalAdaptation, effectiveAdaptationCeiling } from './local-adaptation.js?v=fast-recovery'
+import { GlobalIdleCalibration } from './global-idle-calibration.js?v=global-idle'
 
 const STORAGE_KEY = 'dance-keys-settings-v2'
 const PERCENTAGES_KEY = 'dance-keys-show-percentages'
@@ -38,6 +39,7 @@ let background = null
 let referenceReadyAt = 0
 let tracker = new ZoneTracker(zones)
 let adaptation = new LocalAdaptation(zones)
+let globalCalibration = new GlobalIdleCalibration(zones)
 let measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: 0 }))
 let flashes = new Map(zones.map((zone) => [zone.id, 0]))
 let frameRequest = null
@@ -88,6 +90,14 @@ function adaptationLabel(data) {
 function renderTelemetry(now = performance.now()) {
   if (!showTelemetry || now - lastTelemetryPaint < 250) return
   lastTelemetryPaint = now
+  const global = globalCalibration.snapshot(now)
+  const globalLabel = {
+    normal: 'NORMAL', waiting: 'WAITING FOR HISTORY', candidate: `IDLE ${seconds(global.idleMs)}/${seconds(global.idleDwellMs)}`,
+    verifying: `VERIFYING ${seconds(global.verificationMs)}/${seconds(global.verificationDwellMs)}`,
+    refreshing: `REFRESHING ${seconds(global.refreshMs)}`,
+    blocked: `BLOCKED — ${global.reason}`, cooldown: `COOLDOWN ${seconds(global.cooldownMs)} remaining`,
+  }[global.state]
+  $('global-telemetry-status').textContent = `GLOBAL: ${background ? globalLabel : 'WAITING FOR REFERENCE'} · low drift ${global.driftCount}/${global.requiredDriftCount} zones`
   const symbols = '▁▂▃▄▅▆▇█'
   for (const [index, zone] of zones.entries()) {
     const { row, fields } = telemetryRows.get(zone.id)
@@ -116,6 +126,7 @@ function rebuildZones(resetTracker = false) {
   if (resetTracker) {
     tracker = new ZoneTracker(zones)
     adaptation = new LocalAdaptation(zones)
+    globalCalibration = new GlobalIdleCalibration(zones)
   }
   if (showTelemetry) rebuildTelemetryRows()
 }
@@ -283,7 +294,7 @@ function render() {
       context.fillText(`${Math.round(ratio * 100)}%`, x + keyWidth / 2, percentageY)
     }
     context.shadowBlur = 0
-    const local = !calibration && background ? adaptation.snapshot(zone.id, now) : null
+    const local = !calibration && background && !globalCalibration.suspendsLocal() ? adaptation.snapshot(zone.id, now) : null
     if (!active && local && ['candidate', 'adapting', 'recovering', 'complete'].includes(local.state)) {
       const barX = x + 2
       const barWidth = Math.max(0, keyWidth - 4)
@@ -300,6 +311,14 @@ function render() {
       context.fillRect(barX, barY, barWidth * progress, barHeight)
       context.globalAlpha = 1
     }
+  }
+  if (showTelemetry && globalCalibration.snapshot(now).state === 'refreshing') {
+    const progress = Math.min(1, globalCalibration.snapshot(now).refreshMs / globalCalibration.config.refreshDurationMs)
+    const barY = y >= 12 ? y - 10 : y + h + 5
+    context.fillStyle = '#10131bdd'
+    context.fillRect(r.x, barY, r.w, 5)
+    context.fillStyle = '#b68cff'
+    context.fillRect(r.x, barY, r.w * progress, 5)
   }
   if (!$('settings-panel').hidden) {
     context.strokeStyle = '#ffcf6c'
@@ -323,14 +342,25 @@ function processFrame(id) {
         for (const event of tracker.update(measurements, now, settings)) {
           if (dispatchZoneEvent(event, zonesById, audio)) flashes.set(event.zoneId, now)
         }
-        const alphaByZone = adaptation.update(measurements, tracker, now, settings)
-        adaptBackground(background, current, FRAME_WIDTH, FRAME_HEIGHT, zones, alphaByZone)
+        const global = globalCalibration.update(measurements, tracker, now, settings)
+        if (global.resetLocal) adaptation = new LocalAdaptation(zones)
+        if (global.alphaByZone.size) {
+          adaptBackground(background, current, FRAME_WIDTH, FRAME_HEIGHT, zones, global.alphaByZone)
+        }
+        if (global.completed) {
+          tracker = new ZoneTracker(zones)
+          adaptation = new LocalAdaptation(zones)
+        } else if (!global.suspendLocal) {
+          const alphaByZone = adaptation.update(measurements, tracker, now, settings)
+          adaptBackground(background, current, FRAME_WIDTH, FRAME_HEIGHT, zones, alphaByZone)
+        }
       }
     } else if (performance.now() >= referenceReadyAt) {
       background = new Float32Array(current)
       measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: 0 }))
       tracker = new ZoneTracker(zones)
       adaptation = new LocalAdaptation(zones)
+      globalCalibration.reset()
       if (calibration) finishCalibration()
       $('welcome').hidden = true
       $('stop').hidden = false
@@ -410,6 +440,7 @@ function releaseCamera() {
   flashes = new Map(zones.map((zone) => [zone.id, 0]))
   tracker = new ZoneTracker(zones)
   adaptation = new LocalAdaptation(zones)
+  globalCalibration.reset()
   render()
   renderTelemetry()
 }
@@ -523,6 +554,7 @@ for (const name of Object.keys(DEFAULT_SETTINGS)) {
       tracker = new ZoneTracker(zones)
       adaptation = new LocalAdaptation(zones)
     }
+    globalCalibration.reset()
     syncControls()
   })
 }
@@ -623,6 +655,9 @@ $('calibrate').addEventListener('click', () => {
   if (!video) { $('settings-status').textContent = 'Start the camera before calibrating.'; return }
   const now = performance.now()
   background = null
+  globalCalibration.reset()
+  adaptation = new LocalAdaptation(zones)
+  tracker = new ZoneTracker(zones)
   referenceReadyAt = now + MANUAL_CAPTURE_DELAY_MS
   calibration = { timer: null, progressTimer: null }
   calibration.timer = window.setTimeout(() => {

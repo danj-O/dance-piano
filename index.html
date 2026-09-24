@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#10131b" />
     <title>Dance Keys</title>
     <link rel="stylesheet" href="styles.css?v=manual-reference-only" />
-    <script type="module" src="src/app.js?v=manual-reference-only"></script>
+    <script type="module" src="src/app.js?v=global-idle"></script>
   </head>
   <body>
     <canvas id="stage" aria-label="Mirrored camera view with sixteen playable key zones"></canvas>
@@ -170,7 +170,8 @@
     </aside>
     <aside id="telemetry-panel" class="telemetry-panel" aria-label="Detector telemetry" hidden>
       <div class="telemetry-heading"><strong>Detector telemetry</strong><button id="telemetry-close" type="button" aria-label="Hide detector telemetry">×</button></div>
-      <p>K numbers follow camera order; screen order is mirrored. R is the recent 2-second range. Amber bars show the drift wait; cyan bars show baseline recovery; a white flash marks completion.</p>
+      <p>K numbers follow camera order; screen order is mirrored. R is the recent 2-second range. Amber bars show the local drift wait; cyan bars show local baseline recovery; a white flash marks local completion. A purple line shows a global refresh.</p>
+      <p id="global-telemetry-status" role="status">GLOBAL: WAITING FOR REFERENCE</p>
       <div id="telemetry-rows" class="telemetry-rows"></div>
     </aside>
   </body>

@@ -71,7 +71,7 @@ export function measureZones(current, background, width, height, zones, settings
   })
 }
 
-// Blend only zones approved by the local temporal adaptation controller.
+// Blend only zones approved by the active calibration controller.
 // The full-frame Float32Array remains shared across nonoverlapping zones.
 export function adaptBackground(background, current, width, height, zones, alphaByZone) {
   if (current.length !== width * height * 4 || background.length !== current.length) {

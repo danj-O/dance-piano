@@ -107,7 +107,7 @@ See [PHASE_2A_RESULTS.md](PHASE_2A_RESULTS.md). This phase added bounded runtime
 
 ---
 
-# Phase 2B — Local Adaptive Calibration (current)
+# Phase 2B — Local Adaptive Calibration (completed)
 
 ## Goal
 
@@ -135,6 +135,8 @@ Do not add global idle auto-calibration or layout editing.
 ## Goal
 
 Allow a stronger shared-reference refresh only when the entire scene is demonstrably idle and stable. Keep eligibility distinct from local zone adaptation and preserve the manual fallback.
+
+See [PHASE_2C_RESULTS.md](PHASE_2C_RESULTS.md) for the implementation, safeguards, and real-camera verification plan.
 
 ---
 
