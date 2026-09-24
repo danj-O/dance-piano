@@ -1,6 +1,7 @@
 # Tuning Dance Keys
 
 1. Aim the camera down at a floor with steady lighting. Keep the camera still and the key strip empty during the one-second startup reference capture.
+   On a phone, the front camera is the default so you can see the screen. Choose **Settings → Camera → Rear camera** if that placement works better. You can switch while playing; clear the strip while the new camera captures its floor reference.
 2. Start the app and open **Settings**. Adjust **Key strip height** and **Key strip position** until the outlined area covers where your feet land.
    The height can be as low as 0.5%, nearly a line. Note labels move outside the strip when it is thin.
 3. Move completely out of that area, then click the large **Calibrate empty floor** button at the top of Settings. It captures a new floor reference, then measures for two seconds. Stay clear until the progress bar disappears and the status says calibration is complete.
@@ -18,7 +19,7 @@
 | App feels slow | Raise **Pixel sample step**. Occupancy is measured as a percentage, so the step threshold should remain broadly comparable. |
 | No camera picture | Check camera permission and that the page is on localhost or HTTPS; close other apps using the camera. |
 
-Green fill means a note just played. Yellow fill means the key remains occupied after that flash. Orange appears during calibration when a key reaches half the step threshold. White is idle. Numeric percentages appear during calibration or while **Show key percentages** is on. **Reset defaults** restores the initial settings, including the display switch, and **Stop camera** releases the device.
+Green fill means a note just played. Yellow fill means the key remains occupied after that flash. Orange appears during calibration when a key reaches half the step threshold. White is idle. Numeric percentages appear during calibration or while **Show key percentages** is on. **Reset defaults** restores the initial settings, including the front camera and display switch, and **Stop camera** releases the device.
 
 This detector compares the view with a clear-floor image; it does not identify feet. Shadows, pets, or other objects in the strip can trigger notes. Calibrate again when lighting or camera placement changes.
 

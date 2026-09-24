@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#10131b" />
     <title>Dance Keys</title>
     <link rel="stylesheet" href="styles.css?v=effect-amounts" />
-    <script type="module" src="src/app.js?v=mobile-compat"></script>
+    <script type="module" src="src/app.js?v=camera-switch"></script>
   </head>
   <body>
     <canvas id="stage" aria-label="Mirrored camera view with sixteen playable key zones"></canvas>
@@ -32,6 +32,14 @@
         <button id="calibrate" type="button">Calibrate empty floor</button>
         <progress id="calibration-progress" max="2500" value="0" aria-label="Calibration progress" hidden></progress>
         <p id="settings-status" class="status" role="status" aria-live="polite">Move out of the key strip before calibrating.</p>
+      </div>
+      <div class="control">
+        <label for="camera-facing">Camera</label>
+        <select id="camera-facing">
+          <option value="user">Front camera</option>
+          <option value="environment">Rear camera</option>
+        </select>
+        <small>Switching cameras captures a new empty-floor reference. Keep the key strip clear.</small>
       </div>
       <label class="display-toggle" for="show-percentages">
         <span><strong>Show key percentages</strong><small>Keep the live occupancy numbers visible while playing.</small></span>

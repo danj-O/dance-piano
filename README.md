@@ -10,7 +10,7 @@ python3 -m http.server 8000
 
 Open <http://localhost:8000> in a recent Chrome, Firefox, or Safari. Aim the camera at a clear floor and keep the key strip empty while clicking **Start camera and sound**. After a one-second reference capture, step into the strip. The view is mirrored like a mirror; notes go from low on the left to high on the right. Use **Stop camera** to release the camera and audio. Camera access requires localhost or HTTPS when hosted elsewhere.
 
-For a phone, host the folder on HTTPS and open that URL on the phone. A plain LAN `http://` URL usually cannot request a camera.
+For a phone, host the folder on HTTPS and open that URL on the phone. A plain LAN `http://` URL usually cannot request a camera. The front camera is selected by default so you can face the screen. Open **Settings → Camera** to choose the rear camera before starting or switch while playing. Switching releases the previous camera and captures a new empty-floor reference; keep the key strip clear until it finishes. The choice saves in this browser.
 
 ## Tune it
 

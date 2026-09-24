@@ -8,6 +8,7 @@ import { DEFAULT_MUSIC, addTempoTap, buildNotes, normalizeMusicSettings } from '
 const STORAGE_KEY = 'dance-keys-settings-v2'
 const PERCENTAGES_KEY = 'dance-keys-show-percentages'
 const MUSIC_KEY = 'dance-keys-music-v1'
+const CAMERA_KEY = 'dance-keys-camera-v1'
 const $ = (id) => document.getElementById(id)
 const stage = $('stage')
 const context = stage.getContext('2d')
@@ -19,6 +20,7 @@ const frameContext = frameCanvas.getContext('2d', { willReadFrequently: true })
 let settings = loadSettings()
 let showPercentages = loadShowPercentages()
 let musicSettings = loadMusicSettings()
+let cameraFacing = loadCameraFacing()
 // Camera order is reversed by the mirror: low notes appear on screen left.
 let notes = buildNotes(musicSettings, KEY_COUNT).reverse()
 let tempoTaps = []
@@ -35,6 +37,7 @@ let frameRequest = null
 let frameTimer = null
 let runId = 0
 let calibration = null
+let cameraBusy = false
 
 function loadSettings() {
   try { return normalizeSettings(JSON.parse(localStorage.getItem(STORAGE_KEY)) ?? {}) }
@@ -49,6 +52,18 @@ function loadShowPercentages() {
 function loadMusicSettings() {
   try { return normalizeMusicSettings(JSON.parse(localStorage.getItem(MUSIC_KEY)) ?? {}) }
   catch { return normalizeMusicSettings() }
+}
+
+function loadCameraFacing() {
+  try { return localStorage.getItem(CAMERA_KEY) === 'environment' ? 'environment' : 'user' }
+  catch { return 'user' }
+}
+
+function setCameraFacing(mode) {
+  cameraFacing = mode
+  $('camera-facing').value = mode
+  try { localStorage.setItem(CAMERA_KEY, mode) }
+  catch { $('settings-status').textContent = 'Camera choice could not be saved in this browser.' }
 }
 
 function saveMusicSettings() {
@@ -262,6 +277,7 @@ function cameraError(error) {
   if (!window.isSecureContext) return 'Camera access needs localhost or HTTPS.'
   if (error?.name === 'NotAllowedError') return 'Camera permission was denied. Allow access in your browser and try again.'
   if (error?.name === 'NotFoundError') return 'No camera was found on this device.'
+  if (error?.name === 'OverconstrainedError') return 'That camera is not available on this device.'
   if (error?.name === 'NotReadableError') return 'The camera is busy in another app. Close it there and try again.'
   return `Could not start: ${error?.message || 'unknown camera or audio error'}`
 }
@@ -280,39 +296,7 @@ async function ensureAudio() {
   await audioStartPromise
 }
 
-async function start() {
-  const button = $('start')
-  button.disabled = true
-  $('status').textContent = 'Starting sound and waiting for camera permission…'
-  const id = ++runId
-  try {
-    await ensureAudio()
-    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { width: FRAME_WIDTH, height: FRAME_HEIGHT, facingMode: 'environment' } })
-    if (id !== runId) { stream.getTracks().forEach((track) => track.stop()); return }
-    video = document.createElement('video')
-    video.autoplay = true
-    video.muted = true
-    video.playsInline = true
-    video.srcObject = stream
-    stream.getVideoTracks()[0].onended = () => stop('Camera disconnected. Start again to reconnect.')
-    await video.play()
-    if (id !== runId) return
-    background = null
-    referenceReadyAt = performance.now() + 1000
-    ratios.fill(0)
-    flashes.fill(0)
-    tracker = new KeyTracker()
-    scheduleFrame(id)
-    $('status').textContent = 'Keep the key strip clear while the floor reference is captured…'
-  } catch (error) {
-    await stop(cameraError(error))
-  } finally {
-    button.disabled = false
-  }
-}
-
-async function stop(message = 'Camera stopped. Start again when ready.') {
-  runId++
+function releaseCamera() {
   if (video && frameRequest != null && 'cancelVideoFrameCallback' in video) video.cancelVideoFrameCallback(frameRequest)
   window.clearTimeout(frameTimer)
   frameRequest = null
@@ -326,6 +310,104 @@ async function stop(message = 'Camera stopped. Start again when ready.') {
   background = null
   referenceReadyAt = 0
   endCalibration()
+  ratios.fill(0)
+  flashes.fill(0)
+  tracker = new KeyTracker()
+  render()
+}
+
+async function openCamera(mode, id, exact = false) {
+  const acquired = await navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: { width: FRAME_WIDTH, height: FRAME_HEIGHT, facingMode: exact ? { exact: mode } : mode },
+  })
+  if (id !== runId) { acquired.getTracks().forEach((track) => track.stop()); return null }
+  const nextVideo = document.createElement('video')
+  nextVideo.autoplay = true
+  nextVideo.muted = true
+  nextVideo.playsInline = true
+  nextVideo.srcObject = acquired
+  stream = acquired
+  video = nextVideo
+  try { await nextVideo.play() }
+  catch (error) {
+    if (id === runId) releaseCamera()
+    throw error
+  }
+  if (id !== runId) return null
+  const track = acquired.getVideoTracks()[0]
+  track.onended = () => stop('Camera disconnected. Start again to reconnect.')
+  background = null
+  referenceReadyAt = performance.now() + 1000
+  scheduleFrame(id)
+  const actual = track.getSettings?.().facingMode
+  return actual === 'user' || actual === 'environment' ? actual : mode
+}
+
+async function start() {
+  const button = $('start')
+  button.disabled = true
+  cameraBusy = true
+  $('camera-facing').disabled = true
+  $('status').textContent = 'Starting sound and waiting for camera permission…'
+  const id = ++runId
+  try {
+    await ensureAudio()
+    if (id !== runId) return
+    const actual = await openCamera(cameraFacing, id)
+    if (actual == null) return
+    setCameraFacing(actual)
+    $('status').textContent = 'Keep the key strip clear while the floor reference is captured…'
+  } catch (error) {
+    if (id === runId) await stop(cameraError(error))
+  } finally {
+    button.disabled = false
+    if (id === runId) { cameraBusy = false; $('camera-facing').disabled = false }
+  }
+}
+
+async function switchCamera(mode) {
+  if (mode === cameraFacing) return
+  if (!video) {
+    setCameraFacing(mode)
+    $('settings-status').textContent = `${mode === 'user' ? 'Front' : 'Rear'} camera selected. Start the camera when ready.`
+    return
+  }
+  const previous = cameraFacing
+  const id = ++runId
+  cameraBusy = true
+  $('camera-facing').disabled = true
+  $('settings-status').textContent = 'Switching cameras. Keep the key strip clear for a new floor reference…'
+  releaseCamera()
+  try {
+    const actual = await openCamera(mode, id, true)
+    if (actual == null) return
+    setCameraFacing(actual)
+    $('settings-status').textContent = actual === mode
+      ? `${mode === 'user' ? 'Front' : 'Rear'} camera ready. Capturing a new floor reference…`
+      : 'This device kept the same camera. Try the other choice again.'
+  } catch (error) {
+    if (id !== runId) return
+    $('camera-facing').value = previous
+    try {
+      const restored = await openCamera(previous, id)
+      if (restored == null) return
+      setCameraFacing(restored)
+      $('settings-status').textContent = `${cameraError(error)} The previous camera is running again.`
+    } catch {
+      await stop(`Could not restart the camera after switching: ${cameraError(error)}`)
+    }
+  } finally {
+    if (id === runId) { cameraBusy = false; $('camera-facing').disabled = false }
+  }
+}
+
+async function stop(message = 'Camera stopped. Start again when ready.') {
+  runId++
+  releaseCamera()
+  cameraBusy = false
+  $('camera-facing').disabled = false
+  $('camera-facing').value = cameraFacing
   $('welcome').hidden = false
   $('stop').hidden = true
   $('status').textContent = message
@@ -385,6 +467,11 @@ $('preview-sound').addEventListener('click', async () => {
 })
 $('start').addEventListener('click', start)
 $('stop').addEventListener('click', () => stop())
+$('camera-facing').value = cameraFacing
+$('camera-facing').addEventListener('change', (event) => {
+  if (cameraBusy) { event.target.value = cameraFacing; return }
+  switchCamera(event.target.value)
+})
 $('settings-toggle').addEventListener('click', () => setPanel($('settings-panel').hidden))
 $('settings-close').addEventListener('click', () => setPanel(false))
 $('show-percentages').checked = showPercentages
@@ -393,7 +480,8 @@ $('show-percentages').addEventListener('change', (event) => {
   saveShowPercentages()
   render()
 })
-$('reset').addEventListener('click', () => {
+$('reset').addEventListener('click', async () => {
+  if (cameraBusy) return
   settings = normalizeSettings()
   musicSettings = normalizeMusicSettings(DEFAULT_MUSIC)
   notes = buildNotes(musicSettings, KEY_COUNT).reverse()
@@ -409,6 +497,7 @@ $('reset').addEventListener('click', () => {
   $('tap-hint').textContent = 'Tap at least twice to set BPM.'
   tracker = new KeyTracker()
   $('settings-status').textContent = 'Default settings restored.'
+  if (cameraFacing !== 'user') await switchCamera('user')
 })
 $('calibrate').addEventListener('click', () => {
   if (!video) { $('settings-status').textContent = 'Start the camera before calibrating.'; return }
