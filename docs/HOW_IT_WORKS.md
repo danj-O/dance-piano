@@ -2,7 +2,7 @@
 
 ## Startup and shutdown
 
-The **Start camera and sound** click creates or resumes an `AudioContext`, then calls `getUserMedia`. **Preview sound** can create the same audio context before camera access. The app waits one second for the camera to settle, captures an empty-floor reference frame, and only then shows the playing view. Keep the strip clear during that capture. No notes are generated from the reference frame. **Stop camera** stops every media track, detaches the video, cancels frame processing, and closes the audio context. A disconnected camera returns to the start screen with a status message.
+The **Start camera and sound** click creates or resumes an `AudioContext`, then calls `getUserMedia`. The front (`user`) camera is preferred by default; Settings can select the rear (`environment`) camera. **Preview sound** can create the same audio context before camera access. The app waits one second for the camera to settle, captures an empty-floor reference frame, and only then shows the playing view. Keep the strip clear during that capture. No notes are generated from the reference frame. Switching cameras cancels frame processing, stops the old track, requests the selected facing mode, and captures a new reference without restarting audio. If switching fails, it tries to restore the previous camera. **Stop camera** stops every media track, detaches the video, cancels frame processing, and closes the audio context. A disconnected camera returns to the start screen with a status message.
 
 All processing happens in the browser. `src/app.js` holds the browser lifecycle and drawing code. `src/detector.js` contains functions that can run without a camera or browser. `src/audio.js` creates short synthesized notes with Web Audio.
 
