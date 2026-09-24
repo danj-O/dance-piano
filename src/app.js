@@ -1,9 +1,11 @@
 import {
-  FRAME_HEIGHT, FRAME_WIDTH, KEY_COUNT, DEFAULT_SETTINGS,
-  KeyTracker, adaptBackground, analyzeOccupancy, calibrationThreshold, normalizeSettings, zoneBounds,
-} from './detector.js'
+  FRAME_HEIGHT, FRAME_WIDTH, DEFAULT_SETTINGS,
+  ZoneTracker, adaptBackground, measureZones, calibrationThreshold, normalizeSettings,
+} from './detector.js?v=module-foundation'
 import { DanceAudio } from './audio.js?v=mobile-compat'
-import { DEFAULT_MUSIC, addTempoTap, buildNotes, normalizeMusicSettings } from './music.js?v=mobile-compat'
+import { DEFAULT_MUSIC, addTempoTap, normalizeMusicSettings } from './music.js?v=mobile-compat'
+import { createDefaultLayout, generateZones } from './layout.js?v=module-foundation'
+import { dispatchZoneEvent } from './actions.js?v=module-foundation'
 
 const STORAGE_KEY = 'dance-keys-settings-v2'
 const PERCENTAGES_KEY = 'dance-keys-show-percentages'
@@ -21,8 +23,9 @@ let settings = loadSettings()
 let showPercentages = loadShowPercentages()
 let musicSettings = loadMusicSettings()
 let cameraFacing = loadCameraFacing()
-// Camera order is reversed by the mirror: low notes appear on screen left.
-let notes = buildNotes(musicSettings, KEY_COUNT).reverse()
+let layout = createDefaultLayout(settings, musicSettings)
+let zones = generateZones(layout)
+let zonesById = new Map(zones.map((zone) => [zone.id, zone]))
 let tempoTaps = []
 let audio = null
 let audioStartPromise = null
@@ -30,14 +33,24 @@ let stream = null
 let video = null
 let background = null
 let referenceReadyAt = 0
-let tracker = new KeyTracker()
-let ratios = new Array(KEY_COUNT).fill(0)
-let flashes = new Array(KEY_COUNT).fill(0)
+let tracker = new ZoneTracker(zones)
+let measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: 0 }))
+let flashes = new Map(zones.map((zone) => [zone.id, 0]))
 let frameRequest = null
 let frameTimer = null
 let runId = 0
 let calibration = null
 let cameraBusy = false
+
+function rebuildZones(resetTracker = false) {
+  layout = createDefaultLayout(settings, musicSettings)
+  zones = generateZones(layout)
+  zonesById = new Map(zones.map((zone) => [zone.id, zone]))
+  const previous = new Map(measurements.map(({ zoneId, ratio }) => [zoneId, ratio]))
+  measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: previous.get(zone.id) ?? 0 }))
+  flashes = new Map(zones.map((zone) => [zone.id, flashes.get(zone.id) ?? 0]))
+  if (resetTracker) tracker = new ZoneTracker(zones)
+}
 
 function loadSettings() {
   try { return normalizeSettings(JSON.parse(localStorage.getItem(STORAGE_KEY)) ?? {}) }
@@ -114,7 +127,7 @@ function syncMusicControls() {
 
 function updateMusic(name, value) {
   musicSettings = normalizeMusicSettings({ ...musicSettings, [name]: value })
-  notes = buildNotes(musicSettings, KEY_COUNT).reverse()
+  rebuildZones()
   saveMusicSettings()
   audio?.setSettings(musicSettings)
   syncMusicControls()
@@ -162,19 +175,19 @@ function render() {
   context.drawImage(video, 0, 0, r.w, r.h)
   context.restore()
 
-  const zone = zoneBounds(settings, FRAME_HEIGHT)
-  const y = r.y + zone.top * r.h
-  const h = zone.height * r.h
-  const keyWidth = r.w / KEY_COUNT
+  const strip = layout.modules[0].transform
+  const y = r.y + strip.y * r.h
+  const h = strip.height * r.h
   const now = performance.now()
   const showReadings = calibration !== null || showPercentages
   const compactZone = h < 36
   const labelsBelow = y < 36
-  for (let screenKey = 0; screenKey < KEY_COUNT; screenKey++) {
-    const cameraKey = KEY_COUNT - 1 - screenKey
-    const x = r.x + screenKey * keyWidth
-    const ratio = ratios[cameraKey]
-    const active = now - flashes[cameraKey] < 250
+  for (const [index, zone] of zones.entries()) {
+    const { x: cameraX, width: cameraWidth } = zone.geometry
+    const x = r.x + (1 - cameraX - cameraWidth) * r.w
+    const keyWidth = cameraWidth * r.w
+    const ratio = measurements[index].ratio
+    const active = now - flashes.get(zone.id) < 250
     const occupied = ratio >= settings.pressThreshold
     context.fillStyle = active ? '#61ef9bb3' : occupied ? '#ffd34aa6' : calibration && ratio >= settings.pressThreshold * 0.5 ? '#ffca7080' : '#ffffff32'
     context.fillRect(x + 1, y, Math.max(0, keyWidth - 2), h)
@@ -189,7 +202,7 @@ function render() {
     context.textBaseline = 'middle'
     context.font = `600 ${Math.max(10, Math.min(16, keyWidth * 0.32))}px system-ui`
     const labelY = compactZone ? (labelsBelow ? y + h + 13 : y - 13) : y + h * (showReadings ? 0.4 : 0.5)
-    context.fillText(notes[cameraKey], x + keyWidth / 2, labelY)
+    context.fillText(zone.action.note, x + keyWidth / 2, labelY)
     if (showReadings) {
       context.font = `${Math.max(10, Math.min(13, keyWidth * 0.27))}px system-ui`
       const percentageY = compactZone ? (labelsBelow ? y + h + 29 : y - 29) : y + h * 0.68
@@ -200,7 +213,7 @@ function render() {
   if (!$('settings-panel').hidden) {
     context.strokeStyle = '#ffcf6c'
     context.lineWidth = 3
-    context.strokeRect(r.x + 1.5, y + 1.5, r.w - 3, Math.max(1, h - 3))
+    context.strokeRect(r.x + strip.x * r.w + 1.5, y + 1.5, strip.width * r.w - 3, Math.max(1, h - 3))
     context.lineWidth = 1
   }
 }
@@ -211,21 +224,20 @@ function processFrame(id) {
     frameContext.drawImage(video, 0, 0, FRAME_WIDTH, FRAME_HEIGHT)
     const current = frameContext.getImageData(0, 0, FRAME_WIDTH, FRAME_HEIGHT).data
     if (background) {
-      ratios = analyzeOccupancy(current, background, FRAME_WIDTH, FRAME_HEIGHT, settings)
+      measurements = measureZones(current, background, FRAME_WIDTH, FRAME_HEIGHT, zones, settings)
       if (calibration) {
-        calibration.samples.push(Math.max(...ratios))
+        calibration.samples.push(Math.max(...measurements.map(({ ratio }) => ratio)))
       } else {
         const now = performance.now()
-        for (const key of tracker.update(ratios, now, settings)) {
-          audio.play(notes[key])
-          flashes[key] = now
+        for (const event of tracker.update(measurements, now, settings)) {
+          if (dispatchZoneEvent(event, zonesById, audio)) flashes.set(event.zoneId, now)
         }
-        adaptBackground(background, current, FRAME_WIDTH, FRAME_HEIGHT, ratios, settings)
+        adaptBackground(background, current, FRAME_WIDTH, FRAME_HEIGHT, zones, measurements, settings)
       }
     } else if (performance.now() >= referenceReadyAt) {
       background = new Float32Array(current)
-      ratios.fill(0)
-      tracker = new KeyTracker()
+      measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: 0 }))
+      tracker = new ZoneTracker(zones)
       $('welcome').hidden = true
       $('stop').hidden = false
     }
@@ -270,7 +282,7 @@ function finishCalibration() {
   saveSettings()
   syncControls()
   $('settings-status').textContent = `Calibrated. Step sensitivity set to ${formatSetting('pressThreshold', value)}.`
-  tracker = new KeyTracker()
+  tracker = new ZoneTracker(zones)
 }
 
 function cameraError(error) {
@@ -310,9 +322,9 @@ function releaseCamera() {
   background = null
   referenceReadyAt = 0
   endCalibration()
-  ratios.fill(0)
-  flashes.fill(0)
-  tracker = new KeyTracker()
+  measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: 0 }))
+  flashes = new Map(zones.map((zone) => [zone.id, 0]))
+  tracker = new ZoneTracker(zones)
   render()
 }
 
@@ -420,8 +432,9 @@ for (const name of Object.keys(DEFAULT_SETTINGS)) {
   $(name).addEventListener('input', (event) => {
     settings = normalizeSettings({ ...settings, [name]: Number(event.target.value) })
     saveSettings()
+    if (name === 'zoneHeight' || name === 'zonePosition') rebuildZones(true)
+    if (name === 'pixelStep') tracker = new ZoneTracker(zones)
     syncControls()
-    if (name === 'zoneHeight' || name === 'zonePosition' || name === 'pixelStep') tracker = new KeyTracker()
   })
 }
 for (const name of ['tonic', 'mode', 'octave', 'sound', 'delayDivision', 'bpm', 'reverbMix', 'delayMix', 'reverbOn', 'delayOn']) {
@@ -457,7 +470,7 @@ $('preview-sound').addEventListener('click', async () => {
   button.disabled = true
   try {
     await ensureAudio()
-    audio.play(notes[Math.floor(KEY_COUNT / 2)])
+    audio.play(zones[Math.floor(zones.length / 2)].action.note)
     $('settings-status').textContent = 'Previewing the selected sound.'
   } catch (error) {
     $('settings-status').textContent = `Sound preview failed: ${error.message}`
@@ -484,7 +497,7 @@ $('reset').addEventListener('click', async () => {
   if (cameraBusy) return
   settings = normalizeSettings()
   musicSettings = normalizeMusicSettings(DEFAULT_MUSIC)
-  notes = buildNotes(musicSettings, KEY_COUNT).reverse()
+  rebuildZones(true)
   tempoTaps = []
   showPercentages = false
   $('show-percentages').checked = false
@@ -495,7 +508,6 @@ $('reset').addEventListener('click', async () => {
   syncMusicControls()
   audio?.setSettings(musicSettings)
   $('tap-hint').textContent = 'Tap at least twice to set BPM.'
-  tracker = new KeyTracker()
   $('settings-status').textContent = 'Default settings restored.'
   if (cameraFacing !== 'user') await switchCamera('user')
 })
@@ -509,7 +521,7 @@ $('calibrate').addEventListener('click', () => {
   calibration.progressTimer = window.setInterval(() => {
     $('calibration-progress').value = Math.min(2500, performance.now() - now)
   }, 100)
-  ratios.fill(0)
+  measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: 0 }))
   $('calibrate').disabled = true
   $('calibrate').textContent = 'Calibrating…'
   $('calibration-progress').value = 0

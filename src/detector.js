@@ -1,4 +1,3 @@
-export const KEY_COUNT = 16
 export const FRAME_WIDTH = 320
 export const FRAME_HEIGHT = 240
 
@@ -32,28 +31,25 @@ export function normalizeSettings(value = {}) {
   return result
 }
 
-export function zoneBounds(settings, height) {
-  const top = (1 - settings.zoneHeight) * settings.zonePosition
-  const y1 = Math.floor(top * height)
+export function zonePixelBounds(geometry, width, height) {
+  const x1 = Math.floor(geometry.x * width)
+  const y1 = Math.floor(geometry.y * height)
   return {
-    top,
-    height: settings.zoneHeight,
+    x1,
+    x2: Math.floor((geometry.x + geometry.width) * width),
     y1,
-    y2: Math.min(height, Math.max(y1 + 1, Math.floor((top + settings.zoneHeight) * height))),
+    y2: Math.min(height, Math.max(y1 + 1, Math.floor((geometry.y + geometry.height) * height))),
   }
 }
 
 // Compare with the empty floor, so a stationary foot remains occupied.
-// Ratios stay comparable when sampling density or key strip height changes.
-export function analyzeOccupancy(current, background, width, height, settings) {
+// Ratios stay comparable when sampling density or zone height changes.
+export function measureZones(current, background, width, height, zones, settings) {
   if (current.length !== width * height * 4 || background.length !== current.length) {
     throw new RangeError("Camera frames have different dimensions")
   }
-  const { y1, y2 } = zoneBounds(settings, height)
-  const ratios = new Array(KEY_COUNT).fill(0)
-  for (let key = 0; key < KEY_COUNT; key++) {
-    const x1 = Math.floor((key * width) / KEY_COUNT)
-    const x2 = Math.floor(((key + 1) * width) / KEY_COUNT)
+  return zones.map((zone) => {
+    const { x1, x2, y1, y2 } = zonePixelBounds(zone.geometry, width, height)
     let changed = 0
     let sampled = 0
     for (let y = y1; y < y2; y += settings.pixelStep) {
@@ -67,23 +63,20 @@ export function analyzeOccupancy(current, background, width, height, settings) {
         sampled++
       }
     }
-    ratios[key] = sampled ? changed / sampled : 0
-  }
-  return ratios
+    return { zoneId: zone.id, ratio: sampled ? changed / sampled : 0 }
+  })
 }
 
-// Follow slow lighting changes only where the key looks empty. Never absorb a
-// held foot into the floor reference.
-export function adaptBackground(background, current, width, height, ratios, settings, alpha = 0.02) {
-  if (current.length !== width * height * 4 || background.length !== current.length || ratios.length !== KEY_COUNT) {
-    throw new RangeError("Background, frame, or key count does not match")
+// Preserve the existing low-activity, per-frame update of the shared reference.
+export function adaptBackground(background, current, width, height, zones, measurements, settings, alpha = 0.02) {
+  if (current.length !== width * height * 4 || background.length !== current.length || measurements.length !== zones.length) {
+    throw new RangeError("Background, frame, or zone count does not match")
   }
-  const { y1, y2 } = zoneBounds(settings, height)
   const emptyThreshold = settings.pressThreshold * 0.35
-  for (let key = 0; key < KEY_COUNT; key++) {
-    if (ratios[key] >= emptyThreshold) continue
-    const x1 = Math.floor((key * width) / KEY_COUNT)
-    const x2 = Math.floor(((key + 1) * width) / KEY_COUNT)
+  for (let index = 0; index < zones.length; index++) {
+    if (measurements[index].zoneId !== zones[index].id) throw new RangeError('Measurements do not match zones')
+    if (measurements[index].ratio >= emptyThreshold) continue
+    const { x1, x2, y1, y2 } = zonePixelBounds(zones[index].geometry, width, height)
     for (let y = y1; y < y2; y++) {
       for (let x = x1; x < x2; x++) {
         const p = (y * width + x) * 4
@@ -95,38 +88,40 @@ export function adaptBackground(background, current, width, height, ratios, sett
   }
 }
 
-export class KeyTracker {
-  constructor() {
-    this.keys = Array.from({ length: KEY_COUNT }, () => ({ armed: true, quietFrames: 0, lastNote: -Infinity }))
+export class ZoneTracker {
+  constructor(zones) {
+    this.states = new Map(zones.map((zone) => [zone.id, { armed: true, quietFrames: 0, lastNote: -Infinity }]))
+    if (this.states.size !== zones.length) throw new RangeError('Zone IDs must be unique')
   }
 
-  update(ratios, now, settings) {
-    if (ratios.length !== KEY_COUNT) throw new RangeError("Expected sixteen key ratios")
-    // A change across half the floor strip is usually camera motion or lighting.
-    const broadChange = ratios.filter((ratio) => ratio >= settings.pressThreshold).length >= KEY_COUNT / 2
-    const triggered = []
+  update(measurements, now, settings) {
+    if (measurements.length !== this.states.size) throw new RangeError('Expected one measurement per zone')
+    // Preserve the default piano's half-of-zones broad-change guard.
+    const broadChange = measurements.filter(({ ratio }) => ratio >= settings.pressThreshold).length >= measurements.length / 2
+    const events = []
     const releaseThreshold = settings.pressThreshold * 0.35
-    for (let i = 0; i < KEY_COUNT; i++) {
-      const key = this.keys[i]
-      const ratio = ratios[i]
-      if (key.armed) {
+    for (const { zoneId, ratio } of measurements) {
+      const state = this.states.get(zoneId)
+      if (!state) throw new RangeError(`Unknown zone: ${zoneId}`)
+      if (state.armed) {
         if (ratio >= settings.pressThreshold) {
-          key.armed = false
-          key.quietFrames = 0
-          if (!broadChange && now - key.lastNote >= settings.cooldownMs) {
-            key.lastNote = now
-            triggered.push(i)
+          state.armed = false
+          state.quietFrames = 0
+          if (!broadChange && now - state.lastNote >= settings.cooldownMs) {
+            state.lastNote = now
+            events.push({ type: 'trigger', zoneId })
           }
         }
       } else {
-        key.quietFrames = ratio < releaseThreshold ? key.quietFrames + 1 : 0
-        if (key.quietFrames >= 2) {
-          key.armed = true
-          key.quietFrames = 0
+        state.quietFrames = ratio < releaseThreshold ? state.quietFrames + 1 : 0
+        if (state.quietFrames >= 2) {
+          state.armed = true
+          state.quietFrames = 0
+          events.push({ type: 'release', zoneId })
         }
       }
     }
-    return triggered
+    return events
   }
 }
 

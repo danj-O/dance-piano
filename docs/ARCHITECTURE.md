@@ -8,6 +8,30 @@ It describes the target direction. The current implementation may not yet match 
 
 ---
 
+## Current Implementation (Phase 1 module foundation)
+
+The default instrument is now a versioned, in-memory layout with one keyboard module. `src/layout.js` derives its normalized strip geometry from the existing `zoneHeight` and `zonePosition` settings, then deterministically generates sixteen camera-coordinate zones with stable IDs and note actions. Generated zones are runtime data, not saved layout data. The existing four localStorage keys and their formats remain unchanged.
+
+`src/app.js` supplies those zones to generic frame measurement and background adaptation in `src/detector.js`. `ZoneTracker` keeps armed/quiet-frame/cooldown state by zone ID and emits `trigger` and `release` events. `src/actions.js` dispatches note triggers to the existing `DanceAudio.play(note)` method; releases only mark the rearm transition. The canvas mirrors the camera, and the generated camera-order notes reverse the low-to-high scale once, so screen-left remains the lowest note.
+
+The shared full-frame baseline and global manual calibration are unchanged. Broad-change suppression still checks whether half or more of the supplied zones are above threshold. That policy matches the default keyboard but needs reconsideration before mixed module types are introduced. The app still owns camera lifecycle, frame loop, calibration session, UI, and storage. See [PHASE_1_RESULTS.md](PHASE_1_RESULTS.md) for parity evidence and remaining constraints.
+
+---
+
+## Current Implementation (Phase 0 audit, 2026-09-24)
+
+The running app is a fixed sixteen-key piano. `src/app.js` owns the camera, frame loop, shared background frame, UI, calibration session, note mapping, and calls to audio. `src/detector.js` computes sixteen ratios from equal-width slices of one horizontal strip and holds an `armed`/quiet-frame/cooldown state for each slice. Its output is a list of key indices, which `src/app.js` maps directly to notes and sends to `DanceAudio`. There are no layout, module, zone, trigger-event, or action objects yet.
+
+The current detector does not import music code, but its geometry, array lengths, and broad-change rule assume exactly sixteen keyboard keys. The visible canvas mirrors the camera; the app reverses the note array so the screen reads low to high from left to right. Any future zone geometry should have an explicit camera-coordinate convention and a separate display transform.
+
+Current `zoneHeight` is a fraction of camera-frame height. `zonePosition` is a fraction of the vertical *space left after the strip height is removed*: the top edge is `(1 - zoneHeight) * zonePosition`. This differs from the proposed module transform's normalized top-left `y`. A default-layout adapter will need to preserve this mapping and the existing saved settings.
+
+The first frame captured after startup, camera switch, or manual calibration is one full-frame `Float32Array`. Detection and adaptation use only the strip; per-key updates modify disjoint parts of the shared array. A zone's update eligibility and its baseline storage need not be the same object, but overlapping future zones cannot independently update shared pixels without a defined policy. The proposed runtime diagram should show zone geometry as an input to detection, rather than suggesting zones are created after detection.
+
+See [PHASE_0_AUDIT.md](PHASE_0_AUDIT.md) for the full current-state inventory and Phase 1 boundaries. The sections below remain the target architecture.
+
+---
+
 # Runtime Data Flow
 
 Preferred runtime flow:

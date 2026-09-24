@@ -10,6 +10,28 @@ Calibration must operate at the generic zone level so every future module benefi
 
 ---
 
+## Current Implementation (Phase 1 update)
+
+`measureZones` now receives generated normalized zone geometry and returns `{zoneId, ratio}` readings. `ZoneTracker` emits ID-based `trigger` and `release` events. The pixel comparison, sampling, two-frame rearm, cooldown, half-of-zones broad-change guard, global threshold estimate, shared full-frame `Float32Array` baseline, and per-region 2% low-activity baseline update are unchanged. No idle calibration, independent zone baseline, drift history, or post-trigger adaptation grace period has been added.
+
+The geometry now comes from the default keyboard module. Adaptation still updates pixels in the shared baseline for each eligible zone; future overlapping zones need a defined shared-pixel policy before they are supported.
+
+---
+
+## Current Implementation and Constraints (Phase 0 audit, 2026-09-24)
+
+The app downsamples each camera frame to 320 × 240 and compares sampled RGB pixels with one full-frame empty-floor snapshot. A pixel is changed when the sum of its three absolute channel differences exceeds `pixelThreshold`; each key's activity is changed samples divided by samples examined. The default strip is 0.5% of frame height. At its default position in a 320 × 240 frame it occupies one sampled row and ten sampled columns per key, so one changed sample moves a ratio by 10 percentage points.
+
+`adaptBackground` already moves the shared baseline toward the current frame by 2% **per processed frame**, but only in a key slice whose changed ratio is below `0.35 × pressThreshold`. It updates every RGB pixel in that eligible slice, including any individually changed pixels. There is no stability duration, trigger/release grace period, elapsed-time normalization, or independent per-zone baseline. This existing behavior is limited low-activity adaptation, not the adaptive-calibration system proposed below. A steady moderate difference above the eligibility cutoff cannot recover through this path, while a small persistent object below the cutoff can be learned.
+
+Manual calibration discards the baseline, waits 500 ms, captures one new full-frame reference, and collects the maximum key ratio per frame until a 2.5-second timer ends. The 90th percentile of those maxima determines one global `pressThreshold`; only that threshold is saved. The baseline and samples are runtime-only. Startup and camera switching also capture a fresh reference after a one-second wait, without the threshold-estimation step. None of these captures checks that the scene is empty or stable; a stationary person or object present during capture becomes the reference.
+
+The present ratio alone cannot tell stable environmental drift from a stationary object. Future per-zone decisions require time history and a conservative occupancy guard; a stronger global-idle refresh should use separate eligibility rules even if it shares frame measurements and baseline-update primitives with local adaptation. With overlapping future zones, independent adaptation also requires an explicit shared-pixel policy or separate zone baselines.
+
+See [PHASE_0_AUDIT.md](PHASE_0_AUDIT.md) for the audit details. The sections below describe desired future behavior.
+
+---
+
 # Problem
 
 A static calibration frame can become stale.
