@@ -26,10 +26,12 @@ button:disabled { cursor: wait; opacity: .65; }
 .settings { position: fixed; z-index: 4; top: 0; right: 0; width: min(28rem, 100vw); height: 100dvh; display: flex; flex-direction: column; overflow: hidden; background: #171e2b; border-left: 1px solid #52617b; box-shadow: -16px 0 40px #0007; }
 .settings-heading { display: grid; grid-template-columns: 1fr auto; gap: .35rem; align-items: center; flex: none; padding: .7rem 1rem .8rem; border-bottom: 1px solid #43516a; background: #1d2636; }
 .settings-heading h2 { grid-column: 1 / -1; grid-row: 2; margin: 0; font-size: 1.45rem; line-height: 1.25; }
+.settings[data-page="root"] .settings-heading h2 { grid-column: 1; grid-row: 1; }
 #settings-back { grid-column: 1; grid-row: 1; justify-self: start; min-height: 2.75rem; border: 0; background: transparent; color: #ffcf6c; font-weight: 700; }
 #settings-close { grid-column: 2; grid-row: 1; min-height: 2.75rem; padding: .45rem .75rem; }
 .settings-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: .9rem 1rem max(1.5rem, env(safe-area-inset-bottom)); }
 .settings-status { margin: 0 0 1rem; padding: .65rem .8rem; border-radius: 9px; background: #253147; color: #d7def0; font-size: .84rem; line-height: 1.35; }
+.settings-status:empty { display: none; }
 .settings-intro { margin: .4rem 0 1.1rem; color: #c4cee0; line-height: 1.45; }
 .settings-categories { display: grid; gap: .65rem; }
 .settings-categories button { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 4.5rem; width: 100%; padding: .8rem 1rem; text-align: left; border-color: #53647d; background: #243046; }
@@ -97,13 +99,16 @@ button:disabled { cursor: wait; opacity: .65; }
 kbd { border: 1px solid #8792a6; border-radius: 3px; padding: 0 .25rem; }
 @media (max-width: 600px) {
   .brand span { display: none; }
-  .toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .5rem; padding: .6rem; }
+  .toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: minmax(2.75rem, auto) minmax(2.75rem, auto); gap: .5rem; padding: .6rem; }
   .toolbar-actions { display: contents; }
   .toolbar button { padding: .5rem; }
   #settings-toggle { grid-column: 2; grid-row: 1; }
   .performance-actions { grid-column: 1 / -1; grid-row: 2; min-width: 0; gap: .4rem; }
   .performance-actions button { flex: 1; min-width: 0; }
+  .performance-actions.dock-bottom { position: fixed; left: .6rem; right: .6rem; bottom: max(.6rem, env(safe-area-inset-bottom)); border-radius: 12px; background: #171e2be8; box-shadow: 0 8px 28px #0008; }
   .welcome { padding: 1.3rem; }
   .settings { border-left: 0; }
+  .settings-intro, .settings-keyboard-hint { display: none; }
+  .settings-scroll { padding: .8rem .8rem max(1.5rem, env(safe-area-inset-bottom)); }
   .telemetry-row { grid-template-columns: 4.9rem 2.1rem 2.8rem minmax(4rem, 1fr) 2.5rem; gap: .15rem; font-size: .66rem; }
 }

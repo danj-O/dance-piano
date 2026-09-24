@@ -10,6 +10,7 @@ import { effectiveAdaptationCeiling } from './local-adaptation.js?v=fast-recover
 import { DetectionRuntime } from './detection-runtime.js?v=phase-2d'
 import { FRAME_FALLBACK_INTERVAL_MS, LOCAL_ADAPTATION, REFERENCE_POLICY, TELEMETRY_PAINT_INTERVAL_MS } from './detection-policy.js'
 import { createSettingsNavigation, SETTINGS_PAGES } from './settings-navigation.js?v=phase-4'
+import { shouldDockPerformanceActions } from './ui-layout.js?v=mobile-polish'
 
 const STORAGE_KEY = 'dance-keys-settings-v2'
 const PERCENTAGES_KEY = 'dance-keys-show-percentages'
@@ -243,6 +244,7 @@ function updateMusic(name, value) {
 function renderSettingsNavigation() {
   const { open, page } = settingsNavigation
   $('settings-panel').hidden = !open
+  $('settings-panel').dataset.page = page
   $('settings-backdrop').hidden = !open
   $('settings-toggle').setAttribute('aria-expanded', String(open))
   for (const element of [stage, document.querySelector('.toolbar'), $('welcome'), $('telemetry-panel')]) {
@@ -267,7 +269,7 @@ function setPanel(open) {
 
 function openSettingsPage(page) {
   if (!settingsNavigation.visit(page)) return
-  if (!calibration && !cameraBusy) $('settings-status').textContent = 'Changes save in this browser.'
+  if (!calibration && !cameraBusy) $('settings-status').textContent = ''
   renderSettingsNavigation()
   $('settings-back').focus()
 }
@@ -275,7 +277,7 @@ function openSettingsPage(page) {
 function backSettings() {
   const previous = settingsNavigation.page
   if (!settingsNavigation.back()) return
-  if (!calibration && !cameraBusy) $('settings-status').textContent = 'Changes save in this browser.'
+  if (!calibration && !cameraBusy) $('settings-status').textContent = ''
   renderSettingsNavigation()
   document.querySelector(`[data-open-settings="${previous}"]`).focus()
 }
@@ -318,7 +320,10 @@ function render() {
   const height = window.innerHeight
   context.fillStyle = '#10131b'
   context.fillRect(0, 0, width, height)
-  if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return
+  if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+    $('performance-actions').classList.remove('dock-bottom')
+    return
+  }
 
   const r = videoRect()
   context.save()
@@ -330,10 +335,23 @@ function render() {
   const strip = layout.modules[0].transform
   const y = r.y + strip.y * r.h
   const h = strip.height * r.h
-  const now = performance.now()
   const showReadings = showPercentages
   const compactZone = h < 36
   const labelsBelow = y < 36
+  const labelMargin = compactZone ? (showReadings ? 36 : 20) : 0
+  const actions = $('performance-actions')
+  if (!actions.hidden && width <= 600) {
+    const toolbarBottom = document.querySelector('.toolbar').getBoundingClientRect().bottom
+    actions.classList.toggle('dock-bottom', shouldDockPerformanceActions({
+      stripTop: y - (labelsBelow ? 0 : labelMargin),
+      stripBottom: y + h + (labelsBelow ? labelMargin : 0),
+      topControlsBottom: toolbarBottom,
+      bottomControlsTop: height - actions.offsetHeight - 12,
+    }))
+  } else {
+    actions.classList.remove('dock-bottom')
+  }
+  const now = performance.now()
   for (const [index, zone] of zones.entries()) {
     const { x: cameraX, width: cameraWidth } = zone.geometry
     const x = r.x + (1 - cameraX - cameraWidth) * r.w
