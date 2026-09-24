@@ -5,7 +5,7 @@ export const FRAME_HEIGHT = 240
 
 export const DEFAULT_SETTINGS = Object.freeze({
   pixelThreshold: 50,
-  pressThreshold: 0.16,
+  pressThreshold: 0.30,
   adaptationCeiling: 0.12,
   cooldownMs: 300,
   zoneHeight: 0.005,
@@ -138,11 +138,4 @@ export class ZoneTracker {
     }
     return events
   }
-}
-
-export function calibrationThreshold(samples) {
-  if (samples.length === 0) return null
-  const sorted = [...samples].sort((a, b) => a - b)
-  const idle = sorted[Math.floor((sorted.length - 1) * 0.9)]
-  return Math.min(0.6, Math.max(0.08, Math.ceil((idle * 2.5 + 0.05) * 100) / 100))
 }

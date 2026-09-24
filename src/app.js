@@ -1,7 +1,7 @@
 import {
   FRAME_HEIGHT, FRAME_WIDTH, DEFAULT_SETTINGS,
-  ZoneTracker, adaptBackground, measureZones, calibrationThreshold, normalizeSettings,
-} from './detector.js?v=drift-band-bars'
+  ZoneTracker, adaptBackground, measureZones, normalizeSettings,
+} from './detector.js?v=manual-reference-only'
 import { DanceAudio } from './audio.js?v=mobile-compat'
 import { DEFAULT_MUSIC, addTempoTap, normalizeMusicSettings } from './music.js?v=mobile-compat'
 import { createDefaultLayout, generateZones } from './layout.js?v=module-foundation'
@@ -12,6 +12,8 @@ const STORAGE_KEY = 'dance-keys-settings-v2'
 const PERCENTAGES_KEY = 'dance-keys-show-percentages'
 const MUSIC_KEY = 'dance-keys-music-v1'
 const CAMERA_KEY = 'dance-keys-camera-v1'
+const MANUAL_CAPTURE_DELAY_MS = 2500
+const MANUAL_CAPTURE_TIMEOUT_MS = 5000
 const $ = (id) => document.getElementById(id)
 const stage = $('stage')
 const context = stage.getContext('2d')
@@ -172,6 +174,7 @@ function syncControls() {
     $(name).value = value
     $(`${name}-value`).textContent = formatSetting(name, value)
   }
+  $('recommended-sensitivity').hidden = settings.pressThreshold === DEFAULT_SETTINGS.pressThreshold
   const effectiveLimit = effectiveAdaptationCeiling(settings)
   const ceilingHelp = settings.adaptationCeiling > effectiveLimit + 0.001
     ? 'Step sensitivity caps this limit. Raise Step sensitivity above the drift peaks to permit a higher limit.'
@@ -250,7 +253,7 @@ function render() {
   const y = r.y + strip.y * r.h
   const h = strip.height * r.h
   const now = performance.now()
-  const showReadings = calibration !== null || showPercentages
+  const showReadings = showPercentages
   const compactZone = h < 36
   const labelsBelow = y < 36
   for (const [index, zone] of zones.entries()) {
@@ -260,7 +263,7 @@ function render() {
     const ratio = measurements[index].ratio
     const active = now - flashes.get(zone.id) < 250
     const occupied = ratio >= settings.pressThreshold
-    context.fillStyle = active ? '#61ef9bb3' : occupied ? '#ffd34aa6' : calibration && ratio >= settings.pressThreshold * 0.5 ? '#ffca7080' : '#ffffff32'
+    context.fillStyle = active ? '#61ef9bb3' : occupied ? '#ffd34aa6' : '#ffffff32'
     context.fillRect(x + 1, y, Math.max(0, keyWidth - 2), h)
     context.strokeStyle = active ? '#61ef9b' : '#ffffff99'
     context.lineWidth = active ? 2 : 1
@@ -315,9 +318,7 @@ function processFrame(id) {
     const current = frameContext.getImageData(0, 0, FRAME_WIDTH, FRAME_HEIGHT).data
     if (background) {
       measurements = measureZones(current, background, FRAME_WIDTH, FRAME_HEIGHT, zones, settings)
-      if (calibration) {
-        calibration.samples.push(Math.max(...measurements.map(({ ratio }) => ratio)))
-      } else {
+      if (!calibration) {
         const now = performance.now()
         for (const event of tracker.update(measurements, now, settings)) {
           if (dispatchZoneEvent(event, zonesById, audio)) flashes.set(event.zoneId, now)
@@ -330,6 +331,7 @@ function processFrame(id) {
       measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: 0 }))
       tracker = new ZoneTracker(zones)
       adaptation = new LocalAdaptation(zones)
+      if (calibration) finishCalibration()
       $('welcome').hidden = true
       $('stop').hidden = false
     }
@@ -351,8 +353,7 @@ function scheduleFrame(id) {
 }
 
 function endCalibration() {
-  if (!calibration) return null
-  const samples = calibration.samples
+  if (!calibration) return false
   window.clearTimeout(calibration.timer)
   window.clearInterval(calibration.progressTimer)
   calibration = null
@@ -360,23 +361,12 @@ function endCalibration() {
   $('calibrate').textContent = 'Calibrate empty floor'
   $('calibration-progress').hidden = true
   render()
-  return samples
+  return true
 }
 
 function finishCalibration() {
-  const samples = endCalibration()
-  if (!samples) return
-  const value = calibrationThreshold(samples)
-  if (value == null) {
-    $('settings-status').textContent = 'No camera frames were available. Try again.'
-    return
-  }
-  settings.pressThreshold = value
-  saveSettings()
-  syncControls()
-  $('settings-status').textContent = `Calibrated. Step sensitivity set to ${formatSetting('pressThreshold', value)}.`
-  tracker = new ZoneTracker(zones)
-  adaptation = new LocalAdaptation(zones)
+  if (!endCalibration()) return
+  $('settings-status').textContent = `Floor reference refreshed. Step sensitivity remains ${formatSetting('pressThreshold', settings.pressThreshold)}.`
 }
 
 function cameraError(error) {
@@ -623,22 +613,32 @@ $('reset').addEventListener('click', async () => {
   $('settings-status').textContent = 'Default settings restored.'
   if (cameraFacing !== 'user') await switchCamera('user')
 })
+$('recommended-sensitivity').addEventListener('click', () => {
+  settings = normalizeSettings({ ...settings, pressThreshold: DEFAULT_SETTINGS.pressThreshold })
+  saveSettings()
+  syncControls()
+  $('settings-status').textContent = 'Step sensitivity set to 30%.'
+})
 $('calibrate').addEventListener('click', () => {
   if (!video) { $('settings-status').textContent = 'Start the camera before calibrating.'; return }
   const now = performance.now()
   background = null
-  referenceReadyAt = now + 500
-  calibration = { samples: [], timer: null, progressTimer: null }
-  calibration.timer = window.setTimeout(finishCalibration, 2500)
+  referenceReadyAt = now + MANUAL_CAPTURE_DELAY_MS
+  calibration = { timer: null, progressTimer: null }
+  calibration.timer = window.setTimeout(() => {
+    if (!endCalibration()) return
+    referenceReadyAt = Infinity
+    $('settings-status').textContent = 'No camera frame was available. Try recalibrating.'
+  }, MANUAL_CAPTURE_TIMEOUT_MS)
   calibration.progressTimer = window.setInterval(() => {
-    $('calibration-progress').value = Math.min(2500, performance.now() - now)
+    $('calibration-progress').value = Math.min(MANUAL_CAPTURE_DELAY_MS, performance.now() - now)
   }, 100)
   measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: 0 }))
   $('calibrate').disabled = true
   $('calibrate').textContent = 'Calibrating…'
   $('calibration-progress').value = 0
   $('calibration-progress').hidden = false
-  $('settings-status').textContent = 'Capturing the empty floor, then measuring noise for two seconds. Keep the strip clear.'
+  $('settings-status').textContent = 'Hold the strip clear while capturing a new floor reference. Step sensitivity will stay the same.'
   render()
 })
 document.addEventListener('keydown', (event) => {

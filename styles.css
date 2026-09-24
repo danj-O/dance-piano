@@ -26,6 +26,7 @@ button:disabled { cursor: wait; opacity: .65; }
 .calibration-card { margin: 1rem 0 1.5rem; padding: .85rem; border: 1px solid #667795; border-radius: 12px; background: #27344a; }
 #calibrate { width: 100%; min-height: 3.4rem; padding: .75rem 1rem; border-color: #ffcf6c; background: #ffcf6c; color: #1a2231; font-weight: 800; }
 #calibrate:hover { background: #ffe3a8; }
+#recommended-sensitivity { width: 100%; margin-top: .55rem; padding: .45rem .7rem; font-size: .82rem; background: transparent; }
 #calibration-progress { width: 100%; height: .7rem; margin-top: .85rem; accent-color: #ffcf6c; }
 .calibration-card .status { margin: .7rem 0 0; line-height: 1.4; }
 .display-toggle { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .85rem; border: 1px solid #52617b; border-radius: 10px; cursor: pointer; }

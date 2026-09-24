@@ -52,7 +52,7 @@ test('a stable 10% bucket remains eligible below the default press threshold', (
   assert.ok(adapted)
 })
 
-test('a persistent 5% bucket can recover with an 8% calibrated press threshold', () => {
+test('a persistent 5% bucket can recover with an 8% selected press threshold', () => {
   const system = setup()
   const calibrated = normalizeSettings({ pressThreshold: 0.08 })
   let adapted = false
@@ -133,7 +133,7 @@ test('the configured activity ceiling blocks values above the selected percent',
   }
 })
 
-test('the chosen ceiling remains below a calibrated press threshold', () => {
+test('the chosen ceiling remains below a selected press threshold', () => {
   assert.equal(effectiveAdaptationCeiling(normalizeSettings({
     pressThreshold: 0.08, adaptationCeiling: 0.15,
   })), 0.06)

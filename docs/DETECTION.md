@@ -18,6 +18,8 @@ The controller distinguishes `normal`, `settling`, `candidate`, `adapting`, `rec
 
 Initial constants and their rationale are recorded in [PHASE_2B_RESULTS.md](PHASE_2B_RESULTS.md) and defined in `src/local-adaptation.js`. A stable low reading is only a guarded candidate, never proof of background; a small stationary object or shadow can still resemble drift. Global idle auto-calibration remains a separate future phase.
 
+Manual recalibration now refreshes only the shared frame reference. It waits 2.5 seconds, captures the next camera frame, and resets per-zone trigger/adaptation state. Step sensitivity defaults to 30% for new or reset settings and is never inferred from calibration noise; a saved sensitivity remains in effect until the user changes it. The former percentile-based threshold estimate has been removed.
+
 ---
 
 ## Current Implementation (Phase 2A telemetry foundation)

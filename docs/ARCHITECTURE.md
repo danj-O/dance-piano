@@ -10,7 +10,7 @@ It describes the target direction. The current implementation may not yet match 
 
 ## Current Implementation (Phase 2B local adaptation)
 
-`src/local-adaptation.js` now decides independently for each zone whether recent telemetry supports guarded, gradual baseline blending. It keeps candidate dwell, new-peak, and post-interaction timing separately from the unchanged trigger state machine. `src/detector.js` applies only approved per-zone blend coefficients to the shared full-frame baseline. The camera overlay shows candidate, recovery, and completion progress; the optional debug panel exposes per-zone state and timing. Manual calibration and the existing note path remain in place. See [PHASE_2B_RESULTS.md](PHASE_2B_RESULTS.md) for parameters and limitations.
+`src/local-adaptation.js` now decides independently for each zone whether recent telemetry supports guarded, gradual baseline blending. It keeps candidate dwell, new-peak, and post-interaction timing separately from the unchanged trigger state machine. `src/detector.js` applies only approved per-zone blend coefficients to the shared full-frame baseline. The camera overlay shows candidate, recovery, and completion progress; the optional debug panel exposes per-zone state and timing. Manual calibration refreshes the frame reference and leaves the saved Step sensitivity unchanged. The existing note path remains in place. See [PHASE_2B_RESULTS.md](PHASE_2B_RESULTS.md) for parameters and limitations.
 
 ---
 

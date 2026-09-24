@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#10131b" />
     <title>Dance Keys</title>
-    <link rel="stylesheet" href="styles.css?v=local-adaptation" />
-    <script type="module" src="src/app.js?v=fast-recovery"></script>
+    <link rel="stylesheet" href="styles.css?v=manual-reference-only" />
+    <script type="module" src="src/app.js?v=manual-reference-only"></script>
   </head>
   <body>
     <canvas id="stage" aria-label="Mirrored camera view with sixteen playable key zones"></canvas>
@@ -30,6 +30,7 @@
       </div>
       <div class="calibration-card">
         <button id="calibrate" type="button">Calibrate empty floor</button>
+        <button id="recommended-sensitivity" type="button" hidden>Use 30% step sensitivity</button>
         <progress id="calibration-progress" max="2500" value="0" aria-label="Calibration progress" hidden></progress>
         <p id="settings-status" class="status" role="status" aria-live="polite">Move out of the key strip before calibrating.</p>
       </div>
@@ -165,7 +166,7 @@
       <div class="settings-actions">
         <button id="reset" type="button">Reset defaults</button>
       </div>
-      <p class="settings-tip">Green means a note just played; yellow means the key remains occupied. During calibration, percentages appear automatically; afterward this switch controls them. Press <kbd>D</kbd> to toggle this panel.</p>
+      <p class="settings-tip">Green means a note just played; yellow means the key remains occupied. Show key percentages controls the live numbers. Recalibration refreshes the floor reference and keeps Step sensitivity unchanged. Press <kbd>D</kbd> to toggle this panel.</p>
     </aside>
     <aside id="telemetry-panel" class="telemetry-panel" aria-label="Detector telemetry" hidden>
       <div class="telemetry-heading"><strong>Detector telemetry</strong><button id="telemetry-close" type="button" aria-label="Hide detector telemetry">×</button></div>

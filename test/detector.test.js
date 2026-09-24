@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { ZoneTracker, adaptBackground, measureZones, calibrationThreshold, normalizeSettings, zonePixelBounds } from '../src/detector.js'
+import { ZoneTracker, adaptBackground, measureZones, normalizeSettings, zonePixelBounds } from '../src/detector.js'
 import { createDefaultLayout, generateZones } from '../src/layout.js'
 import { DEFAULT_MUSIC } from '../src/music.js'
 
@@ -87,15 +87,14 @@ test('cooldown and broad changes suppress an entry without delaying its note', (
   assert.deepEqual(tracker.update(step, 600, settings), [event('trigger', 0)])
 })
 
-test('settings and calibration handle stale or noisy saved values', () => {
+test('settings keep explicit sensitivity and default invalid values to 30%', () => {
   const value = normalizeSettings({ pixelThreshold: 999, zoneHeight: -1, pixelStep: 2.7, pressThreshold: 'oops' })
   assert.equal(value.pixelThreshold, 150)
   assert.equal(value.zoneHeight, 0.005)
   assert.equal(value.pixelStep, 3)
-  assert.equal(value.pressThreshold, 0.16)
+  assert.equal(value.pressThreshold, 0.30)
+  assert.equal(normalizeSettings({ pressThreshold: 0.08 }).pressThreshold, 0.08)
   assert.equal(value.adaptationCeiling, 0.12)
   assert.equal(normalizeSettings({ adaptationCeiling: 0.05 }).adaptationCeiling, 0.05)
   assert.equal(normalizeSettings({ adaptationCeiling: 999 }).adaptationCeiling, 0.45)
-  assert.equal(calibrationThreshold([0, 0.01, 0.02, 0.03, 1]), 0.13)
-  assert.equal(calibrationThreshold([]), null)
 })
