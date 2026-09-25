@@ -20,6 +20,8 @@ Open **Settings** or press **D**. The outline shows the detection area. **Settin
 
 ## Make it yours
 
+Use **Customize Layout** in the performance toolbar to move and resize the keyboard and two example drum triggers over the camera view. Tap a whole module to select it, drag it to move, or drag a corner handle to resize. Red feedback marks an overlap; releasing keeps the last valid position. **Done** makes the edited geometry playable for this page session, while **Cancel** restores the entry layout. From the classic piano, Customize temporarily adds the example kick and snare modules; reloading the page returns to the classic piano. Layouts are not saved yet. See [docs/PHASE_6A_RESULTS.md](docs/PHASE_6A_RESULTS.md).
+
 In **Settings → Instrument**, choose a key, starting octave, and scale or mode. The sixteen notes update immediately, low to high across the mirrored screen. Choose one of five synthesized sounds; **Preview sound** plays a middle key even before starting the camera. One-shot is the default note behavior; Gate sustains a note until the key releases. Attack, Decay, Sustain level, and Release shape newly played notes.
 
 In **Settings → Effects**, turn on reverb or delay and adjust each amount. The sliders reach 200%; type a higher nonnegative percentage in the adjacent field if needed. High amounts taper smoothly in the audio engine to keep the wet signal controlled. Delay follows the chosen BPM and note spacing. Set BPM with the slider or tap **Tap tempo** at least twice at a steady pace. Music and effects settings save in this browser. Resetting defaults restores C major, octave 3, Soft keys, 120 BPM, and both effects off.
@@ -39,7 +41,8 @@ To exercise the Phase 5 mixed layout, open <http://localhost:8000/index.html?lay
 | Path | Purpose |
 | --- | --- |
 | `index.html`, `styles.css` | Accessible controls and responsive layout |
-| `src/app.js` | Camera lifecycle, rendering, settings, calibration |
+| `src/app.js` | Camera lifecycle, rendering, settings, calibration, editor handoff |
+| `src/editor.js` | Session editor geometry, selection, drag, resize, validation |
 | `src/detector.js` | Frame analysis and generic zone trigger state machine |
 | `src/music.js` | Scale mapping, music settings, delay timing, tap tempo |
 | `src/audio.js` | Web Audio synth, percussion, reverb, and delay |

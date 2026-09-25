@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#10131b" />
     <title>Dance Keys</title>
-    <link rel="stylesheet" href="styles.css?v=phase-5" />
-    <script type="module" src="src/app.js?v=phase-5"></script>
+    <link rel="stylesheet" href="styles.css?v=phase-6a" />
+    <script type="module" src="src/app.js?v=phase-6a"></script>
   </head>
   <body>
     <canvas id="stage" aria-label="Mirrored camera view with playable zones"></canvas>
@@ -18,9 +18,15 @@
           <button id="quick-calibrate" type="button" aria-live="polite" hidden>Calibrate</button>
           <button id="mute-toggle" type="button" aria-pressed="false" hidden>Mute</button>
         </div>
+        <button id="customize-toggle" type="button"><span class="label-long">Customize Layout</span><span class="label-short">Customize</span></button>
         <button id="settings-toggle" type="button" aria-controls="settings-panel" aria-expanded="false">Settings</button>
       </div>
     </header>
+    <div id="editor-toolbar" class="editor-toolbar" role="toolbar" aria-label="Customize layout controls" hidden>
+      <div class="editor-title"><strong>Customize Layout</strong><span id="editor-selection" role="status">Select a module</span></div>
+      <div class="editor-actions"><button id="editor-cancel" type="button">Cancel</button><button id="editor-done" class="primary" type="button">Done</button></div>
+    </div>
+    <p id="editor-hint" class="editor-hint" hidden>Tap a module to select it. Drag to move; drag a corner handle to resize. Changes last until reload.</p>
     <main id="welcome" class="welcome">
       <h1>Play the floor.</h1>
       <p>Point your camera at the floor and leave the playable areas empty while starting. Then step into the colored zones. Your video stays in this browser.</p>

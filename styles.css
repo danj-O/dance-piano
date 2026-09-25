@@ -8,11 +8,24 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 button:disabled { cursor: wait; opacity: .65; }
 [hidden] { display: none !important; }
 #stage { display: block; width: 100vw; height: 100dvh; background: #10131b; }
+#stage.is-customizing { touch-action: none; cursor: grab; }
+#stage.is-customizing:active { cursor: grabbing; }
+.label-short { display: none; }
 .toolbar { position: fixed; top: 0; left: 0; right: 0; z-index: 2; display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1rem; background: linear-gradient(#10131be8, #10131b00); }
 .brand { font-size: 1.1rem; font-weight: 800; letter-spacing: .02em; }
 .brand span { font-size: .75rem; font-weight: 500; opacity: .7; margin-left: .3rem; }
 .toolbar-actions, .performance-actions { display: flex; gap: .5rem; }
 .toolbar-actions button { min-height: 2.75rem; }
+#customize-toggle { border-color: #ffcf6c; color: #ffdf98; background: #332d27; font-weight: 700; }
+#customize-toggle:hover { background: #4d3f30; }
+.editor-toolbar { position: fixed; z-index: 3; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: max(.65rem, env(safe-area-inset-top)) 1rem .65rem; border-bottom: 1px solid #8c7140; background: #182132f5; box-shadow: 0 8px 24px #0008; }
+.editor-title { display: flex; flex-direction: column; gap: .12rem; min-width: 0; }
+.editor-title strong { color: #ffcf6c; font-size: 1rem; }
+.editor-title span { color: #d7def0; font-size: .82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.editor-actions { display: flex; gap: .5rem; flex: none; }
+.editor-actions button { min-height: 2.75rem; }
+.editor-actions .primary { margin-top: 0; }
+.editor-hint { position: fixed; z-index: 2; top: calc(max(.65rem, env(safe-area-inset-top)) + 4rem); left: .7rem; max-width: min(30rem, calc(100vw - 1.4rem)); margin: 0; padding: .5rem .7rem; border: 1px solid #667795; border-radius: 9px; background: #182132e8; color: #d7def0; font-size: .76rem; line-height: 1.35; pointer-events: none; }
 #mute-toggle[aria-pressed="true"] { border-color: #ffcf6c; background: #66512d; color: #fff2d2; }
 #quick-calibrate[data-state="running"] { opacity: 1; border-color: #ffcf6c; background: #493c23; color: #fff2d2; }
 #quick-calibrate[data-state="done"] { opacity: 1; cursor: default; border-color: #61ef9b; background: #254b3a; color: #d8ffe8; }
@@ -98,11 +111,14 @@ button:disabled { cursor: wait; opacity: .65; }
 .telemetry-row .trace { grid-column: 4 / -1; color: #a9e9c4; letter-spacing: -.06em; overflow: hidden; }
 kbd { border: 1px solid #8792a6; border-radius: 3px; padding: 0 .25rem; }
 @media (max-width: 600px) {
+  .label-long { display: none; }
+  .label-short { display: inline; }
   .brand span { display: none; }
-  .toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: minmax(2.75rem, auto) minmax(2.75rem, auto); gap: .5rem; padding: .6rem; }
+  .toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; grid-template-rows: minmax(2.75rem, auto) minmax(2.75rem, auto); gap: .4rem; padding: .6rem; }
   .toolbar-actions { display: contents; }
   .toolbar button { padding: .5rem; }
-  #settings-toggle { grid-column: 2; grid-row: 1; }
+  #customize-toggle { grid-column: 2; grid-row: 1; }
+  #settings-toggle { grid-column: 3; grid-row: 1; }
   .performance-actions { grid-column: 1 / -1; grid-row: 2; min-width: 0; gap: .4rem; }
   .performance-actions button { flex: 1; min-width: 0; }
   .performance-actions.dock-bottom { position: fixed; left: .6rem; right: .6rem; bottom: max(.6rem, env(safe-area-inset-bottom)); border-radius: 12px; background: #171e2be8; box-shadow: 0 8px 28px #0008; }
@@ -111,4 +127,10 @@ kbd { border: 1px solid #8792a6; border-radius: 3px; padding: 0 .25rem; }
   .settings-intro, .settings-keyboard-hint { display: none; }
   .settings-scroll { padding: .8rem .8rem max(1.5rem, env(safe-area-inset-bottom)); }
   .telemetry-row { grid-template-columns: 4.9rem 2.1rem 2.8rem minmax(4rem, 1fr) 2.5rem; gap: .15rem; font-size: .66rem; }
+  .editor-toolbar { padding-left: .6rem; padding-right: .6rem; gap: .45rem; }
+  .editor-toolbar button { padding: .5rem .65rem; }
+  .editor-hint { top: calc(max(.65rem, env(safe-area-inset-top)) + 3.9rem); }
+}
+@media (max-height: 450px) {
+  .editor-hint { display: none; }
 }

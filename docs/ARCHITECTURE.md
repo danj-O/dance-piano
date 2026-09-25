@@ -8,9 +8,15 @@ It describes the target direction. The current implementation may not yet match 
 
 ---
 
+## Current Implementation (Phase 6A editor foundation)
+
+`src/editor.js` owns a temporary layout snapshot, selected module, pointer gesture, mirrored coordinate conversion, bounds clamping, and overlap validation through the existing `generateZones` rules. `src/app.js` keeps the camera preview running but pauses frame analysis and event dispatch while the editor is active. The performance layout stays separate from the editor draft until Done. Done applies a session-only layout, regenerates zones and the `DetectionRuntime`, and captures a fresh baseline after geometry changes; Cancel discards the draft and resets temporal state. No layout record is written to localStorage. See [PHASE_6A_RESULTS.md](PHASE_6A_RESULTS.md).
+
+---
+
 ## Current Implementation (Phase 5 trigger modules)
 
-`src/layout.js` supports a normalized, nonoverlapping `trigger` module alongside the classic keyboard. Each trigger deterministically generates one runtime zone with its own stable ID, geometry, label, and configured action. The opt-in `?layout=percussion-demo` layout adds two independent drum triggers to the unchanged default keyboard. `src/app.js` measures and renders all generated zones; `src/actions.js` sends drum triggers to the small percussion path in `src/audio.js`. Detection and both calibration controllers continue to operate on zone IDs and ratios without reading musical action types. The generic broad-change guard now preserves the classic keyboard's eight-of-sixteen boundary when single-zone modules are present. No layout persistence or editor exists. See [PHASE_5_RESULTS.md](PHASE_5_RESULTS.md).
+`src/layout.js` supports a normalized, nonoverlapping `trigger` module alongside the classic keyboard. Each trigger deterministically generates one runtime zone with its own stable ID, geometry, label, and configured action. The opt-in `?layout=percussion-demo` layout adds two independent drum triggers to the unchanged default keyboard. `src/app.js` measures and renders all generated zones; `src/actions.js` sends drum triggers to the small percussion path in `src/audio.js`. Detection and both calibration controllers continue to operate on zone IDs and ratios without reading musical action types. The generic broad-change guard preserves the classic keyboard's eight-of-sixteen boundary when single-zone modules are present. At the end of Phase 5, no layout persistence or editor existed. See [PHASE_5_RESULTS.md](PHASE_5_RESULTS.md).
 
 ---
 

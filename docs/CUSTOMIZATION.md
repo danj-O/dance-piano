@@ -1,5 +1,15 @@
 # Dance Piano Customization
 
+## Current Implementation (Phase 6A)
+
+**Customize Layout** is a top-level performance control. The editor shows the mirrored camera (or a preview placeholder before camera startup) and the current modules. From the classic piano, entering the editor temporarily adds the two Phase 5 trigger modules so keyboard, kick, and snare can all be manipulated. Cancel leaves the original classic layout untouched. Done accepts the three-module layout and edited geometry for this page session only; reloading without the demo query returns to the classic piano. The `?layout=percussion-demo` development URL still starts with the mixed layout.
+
+The editor selects whole modules. Dragging and two corner handles move or resize normalized camera-coordinate rectangles; keyboard keys are regenerated from the keyboard module. Modules are clamped to the displayed camera bounds. Overlap is shown in red during a gesture and the last valid rectangle is kept on release. Detection, adaptive calibration, and musical events pause while editing. Done rebuilds zones and temporal detector state; if geometry changed, the app waits for a fresh camera reference before performance resumes. Cancel restores the entry layout and resets temporal state without replacing its baseline. Camera switching is unavailable inside the editor because Settings is closed there. The Customize action is disabled while camera permission/startup, switching, or manual calibration is in progress.
+
+There is no layout storage, inspector, add/delete/duplicate control, or module configuration editing in this phase. See [PHASE_6A_RESULTS.md](PHASE_6A_RESULTS.md).
+
+---
+
 ## Product Goal
 
 Customize Mode turns Dance Piano into a visual body-instrument builder.
@@ -14,7 +24,7 @@ Normal Mode:
 
 The user performs with the instrument.
 
-Settings contains:
+The performance toolbar contains:
 
 ```text
 Customize Layout
@@ -25,7 +35,7 @@ Customize Mode:
 - modules become selectable
 - selected modules display editing controls
 - modules can be moved and resized
-- an inspector displays module-specific configuration
+- a future inspector displays module-specific configuration
 - accidental musical triggering should not interfere with editing
 
 The user presses `Done` to return to performance.

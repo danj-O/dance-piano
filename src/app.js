@@ -4,9 +4,10 @@ import {
 } from './detector.js?v=phase-5'
 import { DanceAudio } from './audio.js?v=phase-5'
 import { DEFAULT_MUSIC, addTempoTap, effectiveEnvelope, normalizeMusicSettings } from './music.js?v=phase-3'
-import { createDefaultLayout, createMixedDemoLayout, generateZones } from './layout.js?v=phase-5'
+import { classicStripGeometry, createDefaultLayout, createMixedDemoLayout, generateZones } from './layout.js?v=phase-5'
 import { dispatchZoneEvent } from './actions.js?v=phase-5'
 import { displayRect } from './display-geometry.js?v=phase-5'
+import { cloneLayout, EditorSession, EDITOR_HANDLE_SIZE } from './editor.js?v=phase-6a'
 import { effectiveAdaptationCeiling } from './local-adaptation.js?v=fast-recovery'
 import { DetectionRuntime } from './detection-runtime.js?v=phase-5'
 import { FRAME_FALLBACK_INTERVAL_MS, LOCAL_ADAPTATION, REFERENCE_POLICY, TELEMETRY_PAINT_INTERVAL_MS } from './detection-policy.js'
@@ -18,7 +19,15 @@ const PERCENTAGES_KEY = 'dance-keys-show-percentages'
 const MUSIC_KEY = 'dance-keys-music-v1'
 const CAMERA_KEY = 'dance-keys-camera-v1'
 const mixedDemo = new URLSearchParams(window.location.search).get('layout') === 'percussion-demo'
-const buildLayout = (settings, music) => (mixedDemo ? createMixedDemoLayout : createDefaultLayout)(settings, music)
+let sessionLayout = null
+function buildLayout(settings, music) {
+  if (!sessionLayout) return (mixedDemo ? createMixedDemoLayout : createDefaultLayout)(settings, music)
+  const next = cloneLayout(sessionLayout)
+  // Current global music controls still configure the keyboard in Phase 6A.
+  const keyboard = next.modules.find((module) => module.id === 'keyboard-1')
+  if (keyboard) keyboard.config = createDefaultLayout(settings, music).modules[0].config
+  return next
+}
 const $ = (id) => document.getElementById(id)
 const stage = $('stage')
 const context = stage.getContext('2d')
@@ -56,6 +65,9 @@ let showTelemetry = false
 let telemetryRows = new Map()
 let lastTelemetryPaint = -Infinity
 const settingsNavigation = createSettingsNavigation()
+let editor = null
+let editorPointer = null
+let welcomeBeforeEditor = false
 
 function rebuildTelemetryRows() {
   const container = $('telemetry-rows')
@@ -148,6 +160,64 @@ function rebuildZones(resetTracker = false) {
     detection = new DetectionRuntime(zones)
   }
   if (showTelemetry) rebuildTelemetryRows()
+}
+
+function startEditor() {
+  if (editor || settingsNavigation.open || cameraBusy || calibration) return
+  const seed = layout.modules.length > 1 ? layout : createMixedDemoLayout(settings, musicSettings)
+  if (seed !== layout) seed.modules[0] = cloneLayout(layout).modules[0]
+  editor = new EditorSession(seed)
+  welcomeBeforeEditor = !$('welcome').hidden
+  $('welcome').hidden = true
+  document.querySelector('.toolbar').hidden = true
+  $('editor-toolbar').hidden = false
+  $('editor-hint').hidden = false
+  $('telemetry-panel').hidden = true
+  stage.classList.add('is-customizing')
+  stage.setAttribute('aria-label', 'Customize layout: select, drag, or resize modules over the mirrored camera')
+  audio?.allNotesOff()
+  $('editor-selection').textContent = 'Select a module'
+  render()
+  $('editor-cancel').focus()
+}
+
+function finishEditor(accept) {
+  if (!editor) return
+  const next = accept ? editor.done() : null
+  const changed = accept && JSON.stringify(next) !== JSON.stringify(layout)
+  if (editorPointer != null && stage.hasPointerCapture(editorPointer)) stage.releasePointerCapture(editorPointer)
+  editorPointer = null
+  editor = null
+  $('editor-toolbar').hidden = true
+  $('editor-hint').hidden = true
+  document.querySelector('.toolbar').hidden = false
+  $('telemetry-panel').hidden = !showTelemetry
+  $('welcome').hidden = !welcomeBeforeEditor
+  stage.classList.remove('is-customizing')
+  stage.setAttribute('aria-label', 'Mirrored camera view with playable zones')
+  if (accept) {
+    sessionLayout = next
+    rebuildZones(true)
+  } else {
+    audio?.allNotesOff()
+    detection.reset()
+    measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: 0 }))
+  }
+  if (video && (changed || !background)) {
+    background = null
+    referenceReadyAt = performance.now() + REFERENCE_POLICY.startupCaptureDelayMs
+  }
+  render()
+  renderTelemetry()
+  $('customize-toggle').focus()
+}
+
+function editorPoint(event) {
+  const box = stage.getBoundingClientRect()
+  return {
+    x: (event.clientX - box.left) * window.innerWidth / box.width,
+    y: (event.clientY - box.top) * window.innerHeight / box.height,
+  }
 }
 
 function loadSettings() {
@@ -321,22 +391,97 @@ function videoRect() {
   return { x: (width - w) / 2, y: (height - h) / 2, w, h }
 }
 
+function renderEditor(view) {
+  context.save()
+  if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+    context.fillStyle = '#202b3c'
+    context.fillRect(view.x, view.y, view.w, view.h)
+    context.fillStyle = '#b9c7db'
+    context.textAlign = 'left'
+    context.font = '600 11px system-ui'
+    context.fillText('CAMERA PREVIEW OFF', view.x + 10,
+      Math.max(view.y + 22, $('editor-toolbar').getBoundingClientRect().bottom + 22))
+  }
+  const generated = generateZones(editor.layout)
+  for (const zone of generated) {
+    const box = displayRect(zone.geometry, view)
+    context.fillStyle = '#64d9ff1a'
+    context.fillRect(box.x, box.y, box.w, box.h)
+    context.strokeStyle = '#d4e8ff45'
+    context.lineWidth = 1
+    context.strokeRect(box.x, box.y, box.w, box.h)
+  }
+  for (const module of editor.layout.modules) {
+    const box = displayRect(module.transform, view)
+    const selected = module.id === editor.selectedId
+    context.strokeStyle = selected ? '#ffcf6c' : '#81dfff'
+    context.lineWidth = selected ? 4 : 2
+    context.setLineDash(selected ? [] : [7, 5])
+    context.strokeRect(box.x, box.y, box.w, box.h)
+    context.setLineDash([])
+    const label = module.type === 'keyboard' ? 'Keyboard' : module.label || 'Trigger'
+    context.font = '700 13px system-ui'
+    const labelWidth = Math.max(75, context.measureText(label).width + 16)
+    const labelY = box.y >= view.y + 32 ? box.y - 28 : box.y + box.h + 8
+    context.fillStyle = selected ? '#ffcf6c' : '#223449'
+    context.fillRect(box.x, labelY, labelWidth, 24)
+    context.fillStyle = selected ? '#17202e' : '#f3f5fb'
+    context.textAlign = 'left'
+    context.textBaseline = 'middle'
+    context.fillText(label, box.x + 8, labelY + 12)
+    if (selected) {
+      const radius = Math.min(11, EDITOR_HANDLE_SIZE / 2)
+      for (const [x, y] of [[box.x, box.y], [box.x + box.w, box.y + box.h]]) {
+        context.fillStyle = '#152131'
+        context.strokeStyle = '#ffcf6c'
+        context.lineWidth = 3
+        context.beginPath()
+        context.arc(x, y, radius, 0, Math.PI * 2)
+        context.fill()
+        context.stroke()
+        context.beginPath()
+        context.moveTo(x - 4, y - 4)
+        context.lineTo(x + 4, y + 4)
+        context.moveTo(x - 4, y + 4)
+        context.lineTo(x + 4, y - 4)
+        context.stroke()
+      }
+    }
+  }
+  if (editor.invalidTransform) {
+    const box = displayRect(editor.invalidTransform, view)
+    context.fillStyle = '#ff5d5d42'
+    context.fillRect(box.x, box.y, box.w, box.h)
+    context.strokeStyle = '#ff7777'
+    context.lineWidth = 4
+    context.strokeRect(box.x, box.y, box.w, box.h)
+  }
+  context.restore()
+}
+
 function render() {
   const width = window.innerWidth
   const height = window.innerHeight
   context.fillStyle = '#10131b'
   context.fillRect(0, 0, width, height)
-  if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+  const cameraReady = video && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+  const r = videoRect()
+  if (cameraReady) {
+    context.save()
+    context.translate(r.x + r.w, r.y)
+    context.scale(-1, 1)
+    context.drawImage(video, 0, 0, r.w, r.h)
+    context.restore()
+  }
+  if (editor) {
+    $('performance-actions').classList.remove('dock-bottom')
+    renderEditor(r)
+    return
+  }
+  if (!cameraReady) {
     $('performance-actions').classList.remove('dock-bottom')
     return
   }
-
-  const r = videoRect()
-  context.save()
-  context.translate(r.x + r.w, r.y)
-  context.scale(-1, 1)
-  context.drawImage(video, 0, 0, r.w, r.h)
-  context.restore()
 
   const keyboard = layout.modules.find((module) => module.type === 'keyboard')
   const { y, h } = displayRect(keyboard.transform, r)
@@ -448,6 +593,11 @@ function render() {
 function processFrame(id) {
   if (id !== runId || !video) return
   try {
+    if (editor) {
+      render()
+      scheduleFrame(id)
+      return
+    }
     frameContext.drawImage(video, 0, 0, FRAME_WIDTH, FRAME_HEIGHT)
     const current = frameContext.getImageData(0, 0, FRAME_WIDTH, FRAME_HEIGHT).data
     if (background) {
@@ -494,6 +644,7 @@ function endCalibration() {
   window.clearTimeout(calibration.timer)
   window.clearInterval(calibration.progressTimer)
   calibration = null
+  $('customize-toggle').disabled = cameraBusy
   $('calibrate').disabled = false
   $('calibrate').textContent = 'Calibrate empty view'
   $('calibration-progress').hidden = true
@@ -615,6 +766,7 @@ async function start() {
   const button = $('start')
   button.disabled = true
   cameraBusy = true
+  $('customize-toggle').disabled = true
   $('camera-facing').disabled = true
   $('status').textContent = 'Starting sound and waiting for camera permission…'
   const id = ++runId
@@ -631,6 +783,7 @@ async function start() {
     button.disabled = false
     if (id === runId) {
       cameraBusy = false
+      $('customize-toggle').disabled = false
       $('camera-facing').disabled = false
       syncQuickCalibrateAvailability()
     }
@@ -647,6 +800,7 @@ async function switchCamera(mode) {
   const previous = cameraFacing
   const id = ++runId
   cameraBusy = true
+  $('customize-toggle').disabled = true
   $('camera-facing').disabled = true
   $('quick-calibrate').disabled = true
   $('settings-status').textContent = 'Switching cameras. Keep all playable areas clear for a new background reference…'
@@ -672,6 +826,7 @@ async function switchCamera(mode) {
   } finally {
     if (id === runId) {
       cameraBusy = false
+      $('customize-toggle').disabled = false
       $('camera-facing').disabled = false
       syncQuickCalibrateAvailability()
     }
@@ -679,9 +834,11 @@ async function switchCamera(mode) {
 }
 
 async function stop(message = 'Camera stopped. Start again when ready.') {
+  if (editor) finishEditor(false)
   runId++
   releaseCamera()
   cameraBusy = false
+  $('customize-toggle').disabled = false
   $('camera-facing').disabled = false
   $('camera-facing').value = cameraFacing
   $('welcome').hidden = false
@@ -695,7 +852,27 @@ async function stop(message = 'Camera stopped. Start again when ready.') {
 
 for (const name of Object.keys(DEFAULT_SETTINGS)) {
   $(name).addEventListener('input', (event) => {
-    settings = normalizeSettings({ ...settings, [name]: Number(event.target.value) })
+    const nextSettings = normalizeSettings({ ...settings, [name]: Number(event.target.value) })
+    if (sessionLayout && (name === 'zoneHeight' || name === 'zonePosition')) {
+      const nextLayout = cloneLayout(sessionLayout)
+      const keyboard = nextLayout.modules.find((module) => module.id === 'keyboard-1')
+      if (keyboard) {
+        const strip = classicStripGeometry(nextSettings)
+        keyboard.transform = { ...keyboard.transform, y: strip.y, height: strip.height }
+        try { generateZones(nextLayout) }
+        catch {
+          $('settings-status').textContent = 'That strip setting would overlap another module. Move the modules first.'
+          syncControls()
+          return
+        }
+        sessionLayout = nextLayout
+        if (video) {
+          background = null
+          referenceReadyAt = performance.now() + REFERENCE_POLICY.startupCaptureDelayMs
+        }
+      }
+    }
+    settings = nextSettings
     saveSettings()
     if (name === 'zoneHeight' || name === 'zonePosition') rebuildZones(true)
     if (name === 'pixelStep') {
@@ -761,6 +938,42 @@ $('preview-sound').addEventListener('click', async () => {
 })
 $('start').addEventListener('click', start)
 $('stop').addEventListener('click', () => stop())
+$('customize-toggle').addEventListener('click', startEditor)
+$('editor-cancel').addEventListener('click', () => finishEditor(false))
+$('editor-done').addEventListener('click', () => finishEditor(true))
+stage.addEventListener('pointerdown', (event) => {
+  if (!editor || event.button !== 0 || editorPointer != null) return
+  const began = editor.begin(editorPoint(event), videoRect())
+  $('editor-selection').textContent = editor.selectedId
+    ? editor.layout.modules.find((module) => module.id === editor.selectedId).type === 'keyboard'
+      ? 'Keyboard selected · drag or resize corners' : `${editor.layout.modules.find((module) => module.id === editor.selectedId).label || 'Trigger'} selected · drag or resize corners`
+    : 'Select a module'
+  if (began) {
+    editorPointer = event.pointerId
+    stage.setPointerCapture(event.pointerId)
+    event.preventDefault()
+  }
+  render()
+})
+stage.addEventListener('pointermove', (event) => {
+  if (!editor || event.pointerId !== editorPointer) return
+  editor.move(editorPoint(event))
+  $('editor-selection').textContent = editor.invalidTransform
+    ? 'Overlap — release to keep last valid position' : 'Drag to move · corners to resize'
+  render()
+})
+function endEditorPointer(event) {
+  if (!editor || event.pointerId !== editorPointer) return
+  const wasInvalid = Boolean(editor.invalidTransform)
+  editor.end()
+  if (stage.hasPointerCapture(editorPointer)) stage.releasePointerCapture(editorPointer)
+  editorPointer = null
+  $('editor-selection').textContent = wasInvalid
+    ? 'Overlap blocked · kept last valid position' : 'Position ready · Done to play'
+  render()
+}
+stage.addEventListener('pointerup', endEditorPointer)
+stage.addEventListener('pointercancel', endEditorPointer)
 $('camera-facing').value = cameraFacing
 $('camera-facing').addEventListener('change', (event) => {
   if (cameraBusy) { event.target.value = cameraFacing; return }
@@ -808,7 +1021,8 @@ $('reset').addEventListener('click', async () => {
   audio?.setSettings(musicSettings)
   $('tap-hint').textContent = 'Tap at least twice to set BPM.'
   if (cameraFacing !== 'user') await switchCamera('user')
-  $('settings-status').textContent = 'Default settings restored.'
+  $('settings-status').textContent = sessionLayout
+    ? 'Default settings restored. Your session layout remains until reload.' : 'Default settings restored.'
 })
 $('recommended-sensitivity').addEventListener('click', () => {
   settings = normalizeSettings({ ...settings, pressThreshold: DEFAULT_SETTINGS.pressThreshold })
@@ -830,6 +1044,7 @@ function startManualCalibration() {
   detection.reset()
   referenceReadyAt = now + REFERENCE_POLICY.manualCaptureDelayMs
   calibration = { timer: null, progressTimer: null }
+  $('customize-toggle').disabled = true
   calibration.timer = window.setTimeout(() => {
     if (!endCalibration()) return
     referenceReadyAt = Infinity
@@ -856,6 +1071,10 @@ $('calibrate').addEventListener('click', startManualCalibration)
 $('quick-calibrate').addEventListener('click', startManualCalibration)
 $('mute-toggle').addEventListener('click', () => setMuted(!muted))
 document.addEventListener('keydown', (event) => {
+  if (editor) {
+    if (event.key === 'Escape') finishEditor(false)
+    return
+  }
   keepSettingsFocus(event)
   if (event.key === 'Escape' && settingsNavigation.open) setPanel(false)
   if (event.key.toLowerCase() === 'd' && !event.repeat && !event.altKey && !event.ctrlKey && !event.metaKey
@@ -863,7 +1082,14 @@ document.addEventListener('keydown', (event) => {
     setPanel(!settingsNavigation.open)
   }
 })
-window.addEventListener('resize', resize)
+window.addEventListener('resize', () => {
+  if (editorPointer != null) {
+    editor.end()
+    if (stage.hasPointerCapture(editorPointer)) stage.releasePointerCapture(editorPointer)
+    editorPointer = null
+  }
+  resize()
+})
 syncControls()
 syncMusicControls()
 resize()

@@ -208,6 +208,8 @@ Do not build the visual editor yet.
 
 # Phase 6 — Customize Mode MVP
 
+Phase 6A, the editor foundation for module selection, drag, resize, overlap prevention, and session-only Done/Cancel, is implemented. See [PHASE_6A_RESULTS.md](PHASE_6A_RESULTS.md). Phase 6B module operations/configuration and Phase 6C layout persistence remain future work; do not infer their completion from the broad Phase 6 list below.
+
 ## Goal
 
 Allow users to visually build an instrument.
