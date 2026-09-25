@@ -34,13 +34,15 @@ npm test
 
 The test command uses Node's built-in test runner; no install is needed. The app itself is plain HTML, CSS, and JavaScript modules.
 
+To exercise the Phase 5 mixed layout, open <http://localhost:8000/index.html?layout=percussion-demo>. It adds a **KICK** region on the performer's left and **SNARE** on the right, above the unchanged keyboard. The query parameter is for development only and saves nothing; remove it to return to the classic piano. Keep all three playable areas clear during reference capture. See [docs/PHASE_5_RESULTS.md](docs/PHASE_5_RESULTS.md) for the test procedure and current limits.
+
 | Path | Purpose |
 | --- | --- |
 | `index.html`, `styles.css` | Accessible controls and responsive layout |
 | `src/app.js` | Camera lifecycle, rendering, settings, calibration |
-| `src/detector.js` | Frame analysis and note trigger state machine |
+| `src/detector.js` | Frame analysis and generic zone trigger state machine |
 | `src/music.js` | Scale mapping, music settings, delay timing, tap tempo |
-| `src/audio.js` | Web Audio synth, reverb, and delay |
+| `src/audio.js` | Web Audio synth, percussion, reverb, and delay |
 | `test/` | Detection and music tests |
 
 ## Current limits

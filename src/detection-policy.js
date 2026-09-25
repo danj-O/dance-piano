@@ -29,6 +29,7 @@ export const TRIGGER_POLICY = Object.freeze({
   releaseFraction: 0.35,
   rearmQuietFrames: 2,
   broadChangeFraction: 0.5,
+  minimumBroadZones: 4,
 })
 
 export const TELEMETRY_POLICY = Object.freeze({

@@ -5,6 +5,11 @@ export function dispatchZoneEvent(event, zonesById, audio) {
   }
   const action = zonesById.get(event.zoneId)?.action
   if (!action) throw new RangeError(`No action for zone: ${event.zoneId}`)
+  if (action.type === 'drum') {
+    if (event.type === 'release') return false
+    audio.playDrum(action.sound)
+    return true
+  }
   if (action.type !== 'note') throw new RangeError(`Unknown action type: ${action.type}`)
   const mode = action.mode ?? 'oneShot'
   if (mode !== 'oneShot' && mode !== 'gate') throw new RangeError(`Unknown note mode: ${mode}`)

@@ -1,4 +1,4 @@
-import { ZoneTracker } from './detector.js'
+import { ZoneTracker } from './detector.js?v=phase-5'
 import { LocalAdaptation } from './local-adaptation.js'
 import { GlobalIdleCalibration } from './global-idle-calibration.js'
 

@@ -170,11 +170,13 @@ See [PHASE_4_RESULTS.md](PHASE_4_RESULTS.md) for the sectioned Settings navigati
 
 ---
 
-# Phase 5 — Generic Trigger Modules
+# Phase 5 — Generic Trigger Modules (implemented)
 
 ## Goal
 
 Prove the architecture works beyond a keyboard.
+
+The opt-in mixed layout, generic trigger zones, drum action dispatch, percussion voices, rendering, and mixed calibration/detection tests are recorded in [PHASE_5_RESULTS.md](PHASE_5_RESULTS.md). Physical camera and speaker acceptance remains pending; no Phase 6 editor work is included.
 
 ## Work
 

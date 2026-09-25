@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#10131b" />
     <title>Dance Keys</title>
-    <link rel="stylesheet" href="styles.css?v=mobile-polish" />
-    <script type="module" src="src/app.js?v=mobile-polish"></script>
+    <link rel="stylesheet" href="styles.css?v=phase-5" />
+    <script type="module" src="src/app.js?v=phase-5"></script>
   </head>
   <body>
-    <canvas id="stage" aria-label="Mirrored camera view with sixteen playable key zones"></canvas>
+    <canvas id="stage" aria-label="Mirrored camera view with playable zones"></canvas>
     <header class="toolbar">
       <div class="brand">Dance Keys <span>floor piano</span></div>
       <div class="toolbar-actions">
@@ -23,7 +23,7 @@
     </header>
     <main id="welcome" class="welcome">
       <h1>Play the floor.</h1>
-      <p>Point your camera at the floor and leave the key strip empty while starting. Then step into the colored keys. Your video stays in this browser.</p>
+      <p>Point your camera at the floor and leave the playable areas empty while starting. Then step into the colored zones. Your video stays in this browser.</p>
       <button id="start" class="primary" type="button">Start camera and sound</button>
       <p id="status" class="status" role="status" aria-live="polite">Ready when you are.</p>
     </main>
@@ -167,7 +167,7 @@
           <option value="user">Front camera</option>
           <option value="environment">Rear camera</option>
         </select>
-        <small>Switching cameras captures a new empty-floor reference. Keep the key strip clear.</small>
+        <small>Switching cameras captures a new background reference. Keep all playable areas clear.</small>
       </div>
       <h3 class="section-heading">Key strip</h3>
       <div class="control">
@@ -210,10 +210,10 @@
         <small>Minimum time between notes on the same key.</small>
       </div>
       <div class="calibration-card">
-        <button id="calibrate" type="button">Calibrate empty floor</button>
+        <button id="calibrate" type="button">Calibrate empty view</button>
         <button id="recommended-sensitivity" type="button" hidden>Use 30% step sensitivity</button>
         <progress id="calibration-progress" max="2500" value="0" aria-label="Calibration progress" hidden></progress>
-        <p class="settings-tip">Move out of the key strip before calibrating. Step sensitivity stays the same.</p>
+        <p class="settings-tip">Clear all playable areas before calibrating. Step sensitivity stays the same.</p>
       </div>
       <details class="settings-advanced">
         <summary>Advanced detection &amp; diagnostics</summary>
@@ -233,7 +233,7 @@
     </aside>
     <aside id="telemetry-panel" class="telemetry-panel" aria-label="Detector telemetry" hidden>
       <div class="telemetry-heading"><strong>Detector telemetry</strong><button id="telemetry-close" type="button" aria-label="Hide detector telemetry">×</button></div>
-      <p>K numbers follow camera order; screen order is mirrored. R is the recent 2-second range. Local states pause during global idle checks. Amber bars show local drift wait; cyan shows local recovery; white marks local completion. Purple shows a global refresh. A large camera move can register as occupancy; clear the strip and use manual calibration then.</p>
+      <p>K numbers follow camera order; trigger zones use their labels. Screen order is mirrored. R is the recent 2-second range. Local states pause during global idle checks. Amber bars show local drift wait; cyan shows local recovery; white marks local completion. Purple shows a global refresh. A large camera move can register as occupancy; clear all zones and use manual calibration then.</p>
       <p id="global-telemetry-status" role="status">GLOBAL: WAITING FOR REFERENCE</p>
       <div id="telemetry-rows" class="telemetry-rows"></div>
     </aside>

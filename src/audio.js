@@ -15,6 +15,7 @@ const VOICE_FLOOR = 0.0001
 const VOICE_PEAK = 0.18
 const OSCILLATOR_TAIL = 0.03
 const ALL_NOTES_OFF_RELEASE = 0.02
+const DRUM_FLOOR = 0.0001
 
 function frequency(note) {
   const [, name, sharp, octave] = /^([A-G])(#?)(\d)$/.exec(note) ?? []
@@ -44,6 +45,7 @@ export class DanceAudio {
     this.context = new AudioContext()
     this.voices = new Set()
     this.gatedVoices = new Map()
+    this.percussionVoices = new Set()
     const ctx = this.context
     this.input = ctx.createGain()
     const compressor = ctx.createDynamicsCompressor()
@@ -102,6 +104,83 @@ export class DanceAudio {
   // Compatibility for the sound preview and older callers.
   play(note, options = {}) {
     return this.trigger(note, options)
+  }
+
+  playDrum(sound) {
+    if (sound !== 'kick' && sound !== 'snare') throw new RangeError(`Unknown drum sound: ${sound}`)
+    if (!this.context || this.context.state !== 'running') return null
+    const ctx = this.context
+    const now = ctx.currentTime
+    const amp = ctx.createGain()
+    const end = now + (sound === 'kick' ? 0.42 : 0.20)
+    amp.gain.setValueAtTime(sound === 'kick' ? 0.45 : 0.36, now)
+    amp.gain.exponentialRampToValueAtTime(DRUM_FLOOR, end)
+    amp.connect(this.input)
+    const voice = { sound, amp, sources: [], nodes: [], remaining: 0, cleaned: false, stopping: false }
+    this.percussionVoices.add(voice)
+    const addSource = (source) => {
+      voice.sources.push(source)
+      voice.remaining++
+      source.onended = () => {
+        if (--voice.remaining === 0) this._cleanupPercussionVoice(voice)
+      }
+      source.start(now)
+      source.stop(end + OSCILLATOR_TAIL)
+    }
+    if (sound === 'kick') {
+      const oscillator = ctx.createOscillator()
+      oscillator.type = 'sine'
+      oscillator.frequency.setValueAtTime(150, now)
+      oscillator.frequency.exponentialRampToValueAtTime(48, now + 0.18)
+      oscillator.connect(amp)
+      addSource(oscillator)
+    } else {
+      const buffer = ctx.createBuffer(1, Math.max(1, Math.round(ctx.sampleRate * 0.20)), ctx.sampleRate)
+      const samples = buffer.getChannelData(0)
+      for (let index = 0; index < samples.length; index++) samples[index] = Math.random() * 2 - 1
+      const noise = ctx.createBufferSource()
+      noise.buffer = buffer
+      const highpass = ctx.createBiquadFilter()
+      highpass.type = 'highpass'
+      highpass.frequency.value = 1200
+      const noiseGain = ctx.createGain()
+      noiseGain.gain.value = 0.65
+      noise.connect(highpass).connect(noiseGain).connect(amp)
+      voice.nodes.push(highpass, noiseGain)
+      const tone = ctx.createOscillator()
+      tone.type = 'triangle'
+      tone.frequency.value = 180
+      const toneGain = ctx.createGain()
+      toneGain.gain.value = 0.35
+      tone.connect(toneGain).connect(amp)
+      voice.nodes.push(toneGain)
+      addSource(noise)
+      addSource(tone)
+    }
+    return voice
+  }
+
+  _cleanupPercussionVoice(voice) {
+    if (voice.cleaned) return
+    voice.cleaned = true
+    for (const source of voice.sources) source.disconnect()
+    for (const node of voice.nodes) node.disconnect()
+    voice.amp.disconnect()
+    this.percussionVoices.delete(voice)
+  }
+
+  _stopPercussionVoice(voice, now, immediate) {
+    if (voice.cleaned || (voice.stopping && !immediate)) return
+    voice.stopping = true
+    if (!immediate) {
+      voice.amp.gain.cancelScheduledValues(now)
+      voice.amp.gain.setTargetAtTime(0, now, 0.005)
+    }
+    for (const source of voice.sources) {
+      try { source.stop(now + (immediate ? 0 : ALL_NOTES_OFF_RELEASE)) }
+      catch { /* an ended source still cleans up through onended */ }
+    }
+    if (immediate) this._cleanupPercussionVoice(voice)
   }
 
   noteOn(note, options = {}) {
@@ -223,7 +302,7 @@ export class DanceAudio {
   }
 
   allNotesOff({ immediate = false } = {}) {
-    if (!this.voices?.size || !this.context) return
+    if (!this.context) return
     const now = this.context.currentTime
     for (const voice of [...this.voices]) {
       if (immediate) {
@@ -235,6 +314,7 @@ export class DanceAudio {
         this._releaseVoice(voice, now, ALL_NOTES_OFF_RELEASE)
       }
     }
+    for (const voice of [...this.percussionVoices]) this._stopPercussionVoice(voice, now, immediate)
   }
 
   async stop() {

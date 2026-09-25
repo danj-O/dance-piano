@@ -1,13 +1,14 @@
 import {
   FRAME_HEIGHT, FRAME_WIDTH, DEFAULT_SETTINGS,
   adaptBackground, measureZones, normalizeSettings,
-} from './detector.js?v=manual-reference-only'
-import { DanceAudio } from './audio.js?v=phase-3'
+} from './detector.js?v=phase-5'
+import { DanceAudio } from './audio.js?v=phase-5'
 import { DEFAULT_MUSIC, addTempoTap, effectiveEnvelope, normalizeMusicSettings } from './music.js?v=phase-3'
-import { createDefaultLayout, generateZones } from './layout.js?v=phase-3'
-import { dispatchZoneEvent } from './actions.js?v=phase-3'
+import { createDefaultLayout, createMixedDemoLayout, generateZones } from './layout.js?v=phase-5'
+import { dispatchZoneEvent } from './actions.js?v=phase-5'
+import { displayRect } from './display-geometry.js?v=phase-5'
 import { effectiveAdaptationCeiling } from './local-adaptation.js?v=fast-recovery'
-import { DetectionRuntime } from './detection-runtime.js?v=phase-2d'
+import { DetectionRuntime } from './detection-runtime.js?v=phase-5'
 import { FRAME_FALLBACK_INTERVAL_MS, LOCAL_ADAPTATION, REFERENCE_POLICY, TELEMETRY_PAINT_INTERVAL_MS } from './detection-policy.js'
 import { createSettingsNavigation, SETTINGS_PAGES } from './settings-navigation.js?v=phase-4'
 import { shouldDockPerformanceActions } from './ui-layout.js?v=mobile-polish'
@@ -16,6 +17,8 @@ const STORAGE_KEY = 'dance-keys-settings-v2'
 const PERCENTAGES_KEY = 'dance-keys-show-percentages'
 const MUSIC_KEY = 'dance-keys-music-v1'
 const CAMERA_KEY = 'dance-keys-camera-v1'
+const mixedDemo = new URLSearchParams(window.location.search).get('layout') === 'percussion-demo'
+const buildLayout = (settings, music) => (mixedDemo ? createMixedDemoLayout : createDefaultLayout)(settings, music)
 const $ = (id) => document.getElementById(id)
 const stage = $('stage')
 const context = stage.getContext('2d')
@@ -28,9 +31,10 @@ let settings = loadSettings()
 let showPercentages = loadShowPercentages()
 let musicSettings = loadMusicSettings()
 let cameraFacing = loadCameraFacing()
-let layout = createDefaultLayout(settings, musicSettings)
+let layout = buildLayout(settings, musicSettings)
 let zones = generateZones(layout)
 let zonesById = new Map(zones.map((zone) => [zone.id, zone]))
+let modulesById = new Map(layout.modules.map((module) => [module.id, module]))
 let tempoTaps = []
 let audio = null
 let audioStartPromise = null
@@ -63,7 +67,8 @@ function rebuildTelemetryRows() {
     const fields = Array.from({ length: 7 }, () => document.createElement('span'))
     fields[5].className = 'details'
     fields[6].className = 'trace'
-    fields[0].textContent = `K${index} ${zone.action?.note ?? ''}`
+    fields[0].textContent = modulesById.get(zone.moduleId).type === 'keyboard'
+      ? `K${index} ${zone.action.note}` : zone.label
     row.append(...fields)
     container.append(row)
     telemetryRows.set(zone.id, { row, fields })
@@ -106,7 +111,7 @@ function renderTelemetry(now = performance.now()) {
     : global.highCount ? ` · ${global.highCount} high/recent`
       : global.unstableCount ? ` · ${global.unstableCount} unstable` : ''
   const manualHint = global.state === 'blocked' && (global.activeCount || global.highCount)
-    ? ' · If the camera moved, clear the strip and calibrate manually.' : ''
+    ? ' · If the camera moved, clear all zones and calibrate manually.' : ''
   $('global-telemetry-status').textContent = `GLOBAL: ${background ? globalLabel : 'WAITING FOR REFERENCE'} · safe low zones ${global.driftCount}/${global.requiredDriftCount}${veto}${manualHint}`
   const symbols = '▁▂▃▄▅▆▇█'
   for (const [index, zone] of zones.entries()) {
@@ -131,9 +136,10 @@ function renderTelemetry(now = performance.now()) {
 }
 
 function rebuildZones(resetTracker = false) {
-  layout = createDefaultLayout(settings, musicSettings)
+  layout = buildLayout(settings, musicSettings)
   zones = generateZones(layout)
   zonesById = new Map(zones.map((zone) => [zone.id, zone]))
+  modulesById = new Map(layout.modules.map((module) => [module.id, module]))
   const previous = new Map(measurements.map(({ zoneId, ratio }) => [zoneId, ratio]))
   measurements = zones.map((zone) => ({ zoneId: zone.id, ratio: previous.get(zone.id) ?? 0 }))
   flashes = new Map(zones.map((zone) => [zone.id, flashes.get(zone.id) ?? 0]))
@@ -332,9 +338,8 @@ function render() {
   context.drawImage(video, 0, 0, r.w, r.h)
   context.restore()
 
-  const strip = layout.modules[0].transform
-  const y = r.y + strip.y * r.h
-  const h = strip.height * r.h
+  const keyboard = layout.modules.find((module) => module.type === 'keyboard')
+  const { y, h } = displayRect(keyboard.transform, r)
   const showReadings = showPercentages
   const compactZone = h < 36
   const labelsBelow = y < 36
@@ -353,39 +358,59 @@ function render() {
   }
   const now = performance.now()
   for (const [index, zone] of zones.entries()) {
-    const { x: cameraX, width: cameraWidth } = zone.geometry
-    const x = r.x + (1 - cameraX - cameraWidth) * r.w
-    const keyWidth = cameraWidth * r.w
+    const { x, y: zoneY, w: zoneWidth, h: zoneHeight } = displayRect(zone.geometry, r)
+    const module = modulesById.get(zone.moduleId)
     const ratio = measurements[index].ratio
     const active = now - flashes.get(zone.id) < 250
     const occupied = ratio >= settings.pressThreshold
-    context.fillStyle = active ? '#61ef9bb3' : occupied ? '#ffd34aa6' : '#ffffff32'
-    context.fillRect(x + 1, y, Math.max(0, keyWidth - 2), h)
-    context.strokeStyle = active ? '#61ef9b' : '#ffffff99'
-    context.lineWidth = active ? 2 : 1
-    context.strokeRect(x + 0.5, y + 0.5, Math.max(0, keyWidth - 1), Math.max(1, h - 1))
-    context.lineWidth = 1
-    context.fillStyle = compactZone ? '#fff' : active || occupied ? '#19202d' : '#fff'
-    context.shadowColor = '#000'
-    context.shadowBlur = compactZone || (!active && !occupied) ? 5 : 0
+    context.save()
     context.textAlign = 'center'
     context.textBaseline = 'middle'
-    context.font = `600 ${Math.max(10, Math.min(16, keyWidth * 0.32))}px system-ui`
-    const labelY = compactZone ? (labelsBelow ? y + h + 13 : y - 13) : y + h * (showReadings ? 0.4 : 0.5)
-    context.fillText(zone.action.note, x + keyWidth / 2, labelY)
-    if (showReadings) {
-      context.font = `${Math.max(10, Math.min(13, keyWidth * 0.27))}px system-ui`
-      const percentageY = compactZone ? (labelsBelow ? y + h + 29 : y - 29) : y + h * 0.68
-      context.fillText(`${Math.round(ratio * 100)}%`, x + keyWidth / 2, percentageY)
+    if (module.type === 'keyboard') {
+      context.fillStyle = active ? '#61ef9bb3' : occupied ? '#ffd34aa6' : '#ffffff32'
+      context.fillRect(x + 1, zoneY, Math.max(0, zoneWidth - 2), zoneHeight)
+      context.strokeStyle = active ? '#61ef9b' : '#ffffff99'
+      context.lineWidth = active ? 2 : 1
+      context.strokeRect(x + 0.5, zoneY + 0.5, Math.max(0, zoneWidth - 1), Math.max(1, zoneHeight - 1))
+      context.fillStyle = compactZone ? '#fff' : active || occupied ? '#19202d' : '#fff'
+      context.shadowColor = '#000'
+      context.shadowBlur = compactZone || (!active && !occupied) ? 5 : 0
+      context.font = `600 ${Math.max(10, Math.min(16, zoneWidth * 0.32))}px system-ui`
+      const labelY = compactZone ? (labelsBelow ? zoneY + zoneHeight + 13 : zoneY - 13)
+        : zoneY + zoneHeight * (showReadings ? 0.4 : 0.5)
+      context.fillText(zone.action.note, x + zoneWidth / 2, labelY)
+      if (showReadings) {
+        context.font = `${Math.max(10, Math.min(13, zoneWidth * 0.27))}px system-ui`
+        const percentageY = compactZone ? (labelsBelow ? zoneY + zoneHeight + 29 : zoneY - 29)
+          : zoneY + zoneHeight * 0.68
+        context.fillText(`${Math.round(ratio * 100)}%`, x + zoneWidth / 2, percentageY)
+      }
+    } else {
+      context.fillStyle = active ? '#61ef9bcc' : occupied ? '#ffd34acc' : '#1b577c99'
+      context.fillRect(x, zoneY, zoneWidth, zoneHeight)
+      context.strokeStyle = active ? '#61ef9b' : occupied ? '#ffd34a' : '#66d9ff'
+      context.lineWidth = 3
+      context.strokeRect(x + 1.5, zoneY + 1.5, Math.max(0, zoneWidth - 3), Math.max(0, zoneHeight - 3))
+      context.fillStyle = active || occupied ? '#19202d' : '#fff'
+      context.shadowColor = '#000'
+      context.shadowBlur = active || occupied ? 0 : 5
+      context.font = `800 ${Math.max(10, Math.min(18, zoneWidth * 0.19))}px system-ui`
+      context.fillText(zone.label, x + zoneWidth / 2,
+        zoneY + zoneHeight * (showReadings ? 0.43 : 0.5), Math.max(0, zoneWidth - 8))
+      if (showReadings) {
+        context.font = `600 ${Math.max(10, Math.min(14, zoneWidth * 0.18))}px system-ui`
+        context.fillText(`${Math.round(ratio * 100)}%`, x + zoneWidth / 2, zoneY + zoneHeight * 0.67)
+      }
     }
     context.shadowBlur = 0
     const local = !calibration && background && !detection.global.suspendsLocal()
       ? detection.local.snapshot(zone.id, now) : null
     if (!active && local && ['candidate', 'adapting', 'recovering', 'complete'].includes(local.state)) {
       const barX = x + 2
-      const barWidth = Math.max(0, keyWidth - 4)
-      const barHeight = Math.max(4, Math.min(7, h * 0.35))
-      const barY = h >= 12 ? y + h - barHeight - 1 : y >= 9 ? y - barHeight - 3 : y + h + 3
+      const barWidth = Math.max(0, zoneWidth - 4)
+      const barHeight = Math.max(4, Math.min(7, zoneHeight * 0.35))
+      const barY = zoneHeight >= 12 ? zoneY + zoneHeight - barHeight - 1
+        : zoneY >= 9 ? zoneY - barHeight - 3 : zoneY + zoneHeight + 3
       const candidate = local.state === 'candidate'
       const complete = local.state === 'complete'
       const progress = candidate ? Math.min(1, local.candidateMs / local.candidateDwellMs)
@@ -397,6 +422,7 @@ function render() {
       context.fillRect(barX, barY, barWidth * progress, barHeight)
       context.globalAlpha = 1
     }
+    context.restore()
   }
   const global = detection.global.snapshot(now)
   if (showTelemetry && global.state === 'refreshing') {
@@ -410,9 +436,11 @@ function render() {
   if (!$('settings-panel').hidden) {
     context.strokeStyle = '#ffcf6c'
     context.lineWidth = 2
-    // Keep the settings outline outside the playable strip, including when
-    // the strip is thinner than the outline itself.
-    context.strokeRect(r.x + strip.x * r.w - 2, y - 2, strip.width * r.w + 4, h + 4)
+    for (const module of layout.modules) {
+      const box = displayRect(module.transform, r)
+      // Keep the outline outside the active region, including thin keys.
+      context.strokeRect(box.x - 2, box.y - 2, box.w + 4, box.h + 4)
+    }
     context.lineWidth = 1
   }
 }
@@ -467,7 +495,7 @@ function endCalibration() {
   window.clearInterval(calibration.progressTimer)
   calibration = null
   $('calibrate').disabled = false
-  $('calibrate').textContent = 'Calibrate empty floor'
+  $('calibrate').textContent = 'Calibrate empty view'
   $('calibration-progress').hidden = true
   $('quick-calibrate').textContent = 'Calibrate'
   $('quick-calibrate').dataset.state = 'idle'
@@ -596,7 +624,7 @@ async function start() {
     const actual = await openCamera(cameraFacing, id)
     if (actual == null) return
     setCameraFacing(actual)
-    $('status').textContent = 'Keep the key strip clear while the floor reference is captured…'
+    $('status').textContent = 'Keep all playable areas clear while the background reference is captured…'
   } catch (error) {
     if (id === runId) await stop(cameraError(error))
   } finally {
@@ -621,7 +649,7 @@ async function switchCamera(mode) {
   cameraBusy = true
   $('camera-facing').disabled = true
   $('quick-calibrate').disabled = true
-  $('settings-status').textContent = 'Switching cameras. Keep the key strip clear for a new floor reference…'
+  $('settings-status').textContent = 'Switching cameras. Keep all playable areas clear for a new background reference…'
   releaseCamera()
   try {
     const actual = await openCamera(mode, id, true)
@@ -722,7 +750,7 @@ $('preview-sound').addEventListener('click', async () => {
   button.disabled = true
   try {
     await ensureAudio()
-    const action = zones[Math.floor(zones.length / 2)].action
+    const action = zones.find((zone) => zone.action.type === 'note').action
     audio.trigger(action.note, { sound: action.sound, envelope: action.envelope })
     $('settings-status').textContent = 'Previewing the selected sound.'
   } catch (error) {
@@ -817,11 +845,11 @@ function startManualCalibration() {
   $('calibrate').disabled = true
   $('calibrate').textContent = 'Calibrating…'
   $('quick-calibrate').disabled = true
-  $('quick-calibrate').textContent = 'Clear strip…'
+  $('quick-calibrate').textContent = 'Clear zones…'
   $('quick-calibrate').dataset.state = 'running'
   $('calibration-progress').value = 0
   $('calibration-progress').hidden = false
-  $('settings-status').textContent = 'Hold the strip clear while capturing a new floor reference. Step sensitivity will stay the same.'
+  $('settings-status').textContent = 'Keep all playable areas clear while capturing a new background reference. Step sensitivity will stay the same.'
   render()
 }
 $('calibrate').addEventListener('click', startManualCalibration)

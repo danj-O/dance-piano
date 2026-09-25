@@ -7,11 +7,14 @@ function harness(mode = 'oneShot') {
   const zones = new Map([
     ['a', { action: { type: 'note', note: 'C4', mode, sound: 'bell', envelope: { attack: 0.1, decay: 0.2, sustain: 0.3, release: 0.4 } } }],
     ['b', { action: { type: 'note', note: 'C4', mode, sound: 'bell' } }],
+    ['kick', { action: { type: 'drum', sound: 'kick' } }],
+    ['snare', { action: { type: 'drum', sound: 'snare' } }],
   ])
   const audio = {
     trigger: (note, options) => calls.push(['trigger', note, options]),
     noteOn: (note, options) => calls.push(['noteOn', note, options]),
     noteOff: (voiceId) => calls.push(['noteOff', voiceId]),
+    playDrum: (sound) => calls.push(['playDrum', sound]),
   }
   return { calls, zones, audio, send: (type, zoneId) => dispatchZoneEvent({ type, zoneId }, zones, audio) }
 }
@@ -34,6 +37,20 @@ test('gated action routes noteOn/noteOff by interaction identity, including dupl
   assert.equal(h.calls[0][2].voiceId, 'a')
   assert.equal(h.calls[1][2].voiceId, 'b')
   assert.deepEqual(h.calls[2], ['noteOff', 'a'])
+})
+
+test('drum actions fire on trigger, ignore release, and coexist with notes', () => {
+  const h = harness()
+  assert.equal(h.send('trigger', 'kick'), true)
+  assert.equal(h.send('trigger', 'a'), true)
+  assert.equal(h.send('trigger', 'snare'), true)
+  assert.equal(h.send('release', 'kick'), false)
+  assert.equal(h.send('release', 'snare'), false)
+  assert.deepEqual(h.calls.map(([method, sound]) => [method, sound]), [
+    ['playDrum', 'kick'], ['trigger', 'C4'], ['playDrum', 'snare'],
+  ])
+  h.send('trigger', 'kick')
+  assert.deepEqual(h.calls.at(-1), ['playDrum', 'kick'])
 })
 
 test('unknown events, actions, and modes fail at the action boundary', () => {

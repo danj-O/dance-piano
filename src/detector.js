@@ -1,5 +1,5 @@
 import { ZoneTelemetry } from './telemetry.js?v=local-adaptation'
-import { FRAME_WIDTH, FRAME_HEIGHT, DEFAULT_SETTINGS, SETTINGS_LIMITS, TRIGGER_POLICY } from './detection-policy.js'
+import { FRAME_WIDTH, FRAME_HEIGHT, DEFAULT_SETTINGS, SETTINGS_LIMITS, TRIGGER_POLICY } from './detection-policy.js?v=phase-5'
 
 export { FRAME_WIDTH, FRAME_HEIGHT, DEFAULT_SETTINGS }
 
@@ -76,6 +76,11 @@ export class ZoneTracker {
   constructor(zones) {
     this.states = new Map(zones.map((zone) => [zone.id, { armed: true, quietFrames: 0, lastNote: -Infinity }]))
     if (this.states.size !== zones.length) throw new RangeError('Zone IDs must be unique')
+    this.moduleGroups = new Map()
+    for (const zone of zones) {
+      const group = zone.moduleId ?? '__ungrouped__'
+      this.moduleGroups.set(group, [...(this.moduleGroups.get(group) ?? []), zone.id])
+    }
     this.telemetry = new Map(zones.map((zone) => [zone.id, new ZoneTelemetry()]))
   }
 
@@ -87,9 +92,15 @@ export class ZoneTracker {
 
   update(measurements, now, settings) {
     if (measurements.length !== this.states.size) throw new RangeError('Expected one measurement per zone')
-    // Preserve the default piano's half-of-zones broad-change guard.
-    const broadChange = measurements.filter(({ ratio }) => ratio >= settings.pressThreshold).length
-      >= measurements.length * TRIGGER_POLICY.broadChangeFraction
+    // A single-zone module must remain playable. Broad change is measured
+    // across enough zones overall, or within a multi-zone module, so adding
+    // independent large regions cannot weaken the classic keyboard guard.
+    const active = new Set(measurements.filter(({ ratio }) => ratio >= settings.pressThreshold)
+      .map(({ zoneId }) => zoneId))
+    const broadChange = active.size >= TRIGGER_POLICY.minimumBroadZones
+      && (active.size >= measurements.length * TRIGGER_POLICY.broadChangeFraction
+        || [...this.moduleGroups.values()].some((ids) => ids.length >= TRIGGER_POLICY.minimumBroadZones
+          && ids.filter((id) => active.has(id)).length >= ids.length * TRIGGER_POLICY.broadChangeFraction))
     const events = []
     const releaseThreshold = settings.pressThreshold * TRIGGER_POLICY.releaseFraction
     for (const { zoneId, ratio } of measurements) {

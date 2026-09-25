@@ -8,6 +8,12 @@ It describes the target direction. The current implementation may not yet match 
 
 ---
 
+## Current Implementation (Phase 5 trigger modules)
+
+`src/layout.js` supports a normalized, nonoverlapping `trigger` module alongside the classic keyboard. Each trigger deterministically generates one runtime zone with its own stable ID, geometry, label, and configured action. The opt-in `?layout=percussion-demo` layout adds two independent drum triggers to the unchanged default keyboard. `src/app.js` measures and renders all generated zones; `src/actions.js` sends drum triggers to the small percussion path in `src/audio.js`. Detection and both calibration controllers continue to operate on zone IDs and ratios without reading musical action types. The generic broad-change guard now preserves the classic keyboard's eight-of-sixteen boundary when single-zone modules are present. No layout persistence or editor exists. See [PHASE_5_RESULTS.md](PHASE_5_RESULTS.md).
+
+---
+
 ## Current Implementation (performance controls)
 
 The performance toolbar exposes the same manual empty-floor calibration action used in Detection Settings. Both buttons call one calibration lifecycle in `src/app.js`; the detector's capture and adaptation rules are unchanged. A session-only Mute toggle controls a master gain after the compressor in `src/audio.js`, silencing dry notes and the reverb/delay returns together while voice and camera state continue running. The toggle is not part of saved music or layout configuration.

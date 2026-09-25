@@ -10,6 +10,12 @@ Calibration must operate at the generic zone level so every future module benefi
 
 ---
 
+## Current Implementation (Phase 5 mixed modules)
+
+Keyboard keys and trigger modules supply the same normalized zone geometry to frame measurement, tracking, local adaptation, and global idle calibration. The baseline remains one shared full-frame array, so overlapping module rectangles are rejected before zones are generated. Broad-change suppression still uses half of the active zones, but now checks both the full layout and each module with at least four zones. At least four zones must be active for suppression. This preserves the classic keyboard's eight-key guard when two independent trigger zones are added, while a single trigger remains playable. The policy is based on zone grouping, not action or sound type. Global idle calibration still counts safe low zones across the complete layout and blocks on any genuinely active/high zone; a camera move still calls for manual calibration. See [PHASE_5_RESULTS.md](PHASE_5_RESULTS.md).
+
+---
+
 ## Current Implementation (Phase 2D review)
 
 `src/detection-policy.js` is the current source of detector/calibration defaults, limits, and internal timing. `src/detection-runtime.js` owns the tracker and both calibration controllers for a reference; it returns one approved baseline-update map per frame. Global telemetry now counts only **safe low zones**, not high or active zones, and identifies the rearm wait after cooldown. Local telemetry explicitly says when global calibration has paused it. A large camera move can make many keys active and is intentionally blocked from automatic calibration; clear the strip and use the manual reference. See [PHASE_2D_RESULTS.md](PHASE_2D_RESULTS.md) for the full policy inventory and [DETECTION_ACCEPTANCE.md](DETECTION_ACCEPTANCE.md) for physical acceptance.

@@ -18,7 +18,13 @@ class FakeNode {
 }
 class FakeGain extends FakeNode { constructor() { super(); this.gain = new FakeParam() } }
 class FakeOscillator extends FakeNode {
-  constructor() { super(); this.frequency = { value: 0 }; this.stopTimes = [] }
+  constructor() { super(); this.frequency = new FakeParam(); this.stopTimes = [] }
+  start(time) { this.startedAt = time }
+  stop(time) { this.stopTimes.push(time) }
+  finish() { this.onended?.() }
+}
+class FakeBufferSource extends FakeNode {
+  constructor() { super(); this.stopTimes = [] }
   start(time) { this.startedAt = time }
   stop(time) { this.stopTimes.push(time) }
   finish() { this.onended?.() }
@@ -30,12 +36,18 @@ class FakeContext {
     this.state = 'suspended'
     this.destination = new FakeNode()
     this.oscillators = []
+    this.bufferSources = []
   }
   createGain() { return new FakeGain() }
   createOscillator() {
     const oscillator = new FakeOscillator()
     this.oscillators.push(oscillator)
     return oscillator
+  }
+  createBufferSource() {
+    const source = new FakeBufferSource()
+    this.bufferSources.push(source)
+    return source
   }
   createDynamicsCompressor() {
     const node = new FakeNode()
@@ -189,4 +201,47 @@ test('invalid note cannot leave a partial voice behind', async () => {
   assert.equal(audio.voices.size, 0)
   assert.equal(audio.gatedVoices.size, 0)
   await audio.stop()
+})
+
+test('kick and snare create distinct finite voices and clean up every source and node', async () => {
+  const { audio } = await setup()
+  const kick = audio.playDrum('kick')
+  const snare = audio.playDrum('snare')
+  assert.equal(audio.percussionVoices.size, 2)
+  assert.equal(kick.sources.length, 1)
+  assert.equal(snare.sources.length, 2)
+  assert.equal(kick.sources[0].type, 'sine')
+  assert.equal(snare.sources[1].type, 'triangle')
+  assert.ok(kick.sources[0].frequency.events.some(([type]) => type === 'exponential'))
+  assert.ok([...kick.sources, ...snare.sources].every((source) => source.stopTimes.length === 1))
+  kick.sources[0].finish()
+  snare.sources[0].finish()
+  assert.equal(audio.percussionVoices.size, 1)
+  snare.sources[1].finish()
+  assert.equal(audio.percussionVoices.size, 0)
+  assert.ok(kick.cleaned && snare.cleaned)
+  assert.ok([...kick.sources, ...snare.sources, ...snare.nodes, kick.amp, snare.amp]
+    .every((node) => node.disconnected))
+  await audio.stop()
+})
+
+test('simultaneous and duplicate drums stay independent of notes and stop with the camera', async () => {
+  const { audio } = await setup()
+  const note = audio.noteOn('C4', { voiceId: 'keyboard-1:key-0' })
+  const firstKick = audio.playDrum('kick')
+  const secondKick = audio.playDrum('kick')
+  const snare = audio.playDrum('snare')
+  assert.equal(audio.voices.size, 1)
+  assert.equal(audio.percussionVoices.size, 3)
+  firstKick.sources[0].finish()
+  assert.equal(audio.percussionVoices.size, 2)
+  assert.equal(audio.gatedVoices.get('keyboard-1:key-0'), note)
+  audio.allNotesOff()
+  assert.equal(note.state, 'releasing')
+  assert.ok([...secondKick.sources, ...snare.sources].every((source) => source.stopTimes.length === 2))
+  await audio.stop()
+  assert.equal(audio.voices.size, 0)
+  assert.equal(audio.percussionVoices.size, 0)
+  assert.ok(secondKick.cleaned && snare.cleaned)
+  assert.throws(() => audio.playDrum('other'), /Unknown drum sound/)
 })
